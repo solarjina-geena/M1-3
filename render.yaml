@@ -1,0 +1,40 @@
+# Render Blueprint — M1-3 iMEB3 대시보드 (FastAPI 하나가 /api 와 frontend/ 정적 파일을 함께 서빙)
+# 사용법: GitHub 에 올린 뒤 Render > New > Blueprint > 이 저장소 선택. 비밀값(sync: false)은 Render 화면에서 직접 입력.
+services:
+  - type: web
+    name: m1-3-imeb3-dashboard
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: M13_ENV
+        value: render            # backend/.env.render 는 없음 → 아래 환경변수만 읽는다
+      - key: SUPABASE_PROJECT_REF
+        value: idlckjmmoysklfssotyk   # 개인 IMEB3 DB. 팀 DB 전환 시 clyjvqffabxpizkhydux 로 바꾸고 키 교체
+      - key: SUPABASE_URL
+        value: https://idlckjmmoysklfssotyk.supabase.co
+      - key: SUPABASE_SCHEMA
+        value: mqi
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false              # 서버 전용 비밀키
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false              # 로그인(GoTrue)용 공개 키
+      - key: MQI_ALLOWED_EMAILS
+        sync: false              # 로그인 허용 팀원 이메일, 쉼표 구분 (팀 Streamlit 앱과 같은 규칙)
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-5-5
+      - key: ADMIN_API_TOKEN
+        sync: false              # 비상용 관리자 토큰. 비워 두면 이메일 로그인만 허용
+      - key: M13_ACTOR
+        value: m1-3-web
+      - key: ALLOWED_ORIGINS
+        value: "*"               # 같은 도메인에서 서빙하므로 CORS 는 사실상 불필요
+      - key: PUBLIC_URL
+        sync: false              # 배포 후 Render 가 준 주소 (예 https://m1-3-imeb3-dashboard.onrender.com)
