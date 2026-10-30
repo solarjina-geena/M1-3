@@ -35,6 +35,7 @@ iMEB3 작업일보 데이터를 Firestore(M1-2 개인과제)에서 팀과제 Sup
 - 2026-10-29(저녁): 최종검사 규칙 반영. 검사자 `worker`(가린 이름) 22명, 1차(신입·지원)/2차(전담 4명=실제 수량) 차수, 재검·미성형 검사 유형, `inspection_run_link` 43건. 리워크 `rework_record` 4건. LOT 흐름표 뷰 `m13_lot_flow`. 기록: `docs/검사규칙_및_LOT흐름표_20261029.md`, `docs/BA_CA_수량차이_원문확인_20261029.md`.
 - 2026-10-29(밤): 자재 LOT 가지 보강. 변환기에 리드핀·와이어·케이스 필드 20여 종과 자재 홈 공정 규칙(BB 수지/BS 리드핀/BA 와이어/CA 케이스) 추가, 개인 DB 에 delta7 적용(material_usage 427 ACTIVE, 완전 사슬 25/57). OCR 프롬프트 공정별 필수 항목 체크리스트, `JournalPayload` 필드 확장, RPC `m13_journal_save` v2, 대시보드 추적 그래프에 자재 칩. 기록: `docs/사슬_연결_적용결과_20261029.md` 7차.
 
+- 2026-10-30(밤): 8월 조립작업일보 엑셀 전사본 적재. `tools/assembly_xls_to_docs.py`(IV/OV·HSV 2호기/스티칭 시트, 모델은 ITEM 줄로 구분). CSV 에 모델 확정 문서가 있는 날은 제외하고 OV/HSV 보류 구간 18장만 적재(차이분 319행). CA LOT 57→74, 완전 사슬 41→49. CSV vs 전사본 수량 대조표를 로컬 docs 에 기록.
 - 2026-10-30(저녁): 8월 사출작업일보 엑셀 전사본(`imeb3사출작업일보_8월_.xls`, 18장) 적재. `tools/injection_xls_to_docs.py` 로 통합 CSV 양식 문서(주/야 23건)를 만들어 변환기에 함께 입력, 차이분 120행 적용. 완전 사슬 CA LOT 25 → 41 / 57.
 - 2026-10-30: 배포 준비. Supabase Auth 이메일 로그인(팀 Streamlit 앱 `auth.py` 규칙을 FastAPI 로 이식, `MQI_ALLOWED_EMAILS` 허용 목록), 대시보드에 "관리자 입력 🔒" 탭(팀 OCR 검토·적재 앱 연결 + 보조 입력 manage.html), AI 생성 표시, `render.yaml`, `tools/auth_admin.py`. 기록: `docs/배포_준비_20261030.md`.
 
