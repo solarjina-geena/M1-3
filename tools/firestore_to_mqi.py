@@ -1119,10 +1119,20 @@ def chain_report(b: Builder) -> list[str]:
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_CSV
-    if not src.exists():
-        sys.exit(f"CSV 없음: {src}")
-    docs, stats = load_docs(src)
+    srcs = [Path(a) for a in sys.argv[1:]] or [DEFAULT_CSV]   # 여러 CSV 를 주면 순서대로 합친다 (예: 통합 CSV + 8월 사출 엑셀 전사본 CSV)
+    for src in srcs:
+        if not src.exists():
+            sys.exit(f"CSV 없음: {src}")
+    docs, stats = {}, Counter()
+    for src in srcs:
+        d1, s1 = load_docs(src)
+        dup = set(d1) & set(docs)
+        if dup:
+            stats[f"중복 문서 id(뒤 파일 무시) {src.name}"] += len(dup)
+        for k, v in d1.items():
+            docs.setdefault(k, v)
+        stats.update(s1)
+    src = srcs[0]
     b = Builder()
     b.build(docs)
     errs = self_check(b.T)
@@ -1131,7 +1141,7 @@ def main():
         old.unlink()
     n, files = write_sql(b.T, SQL_OUT)
 
-    rep = [f"# Firestore → mqi 변환 보고서 ({DATASET})", "", f"- 원본: `{src.name}` — 변경행 {sum(stats.values())}건, 문서 {len(docs)}개 ({dict(stats)})",
+    rep = [f"# Firestore → mqi 변환 보고서 ({DATASET})", "", f"- 원본: {', '.join('`' + p.name + '`' for p in srcs)} — 변경행 {sum(stats.values())}건, 문서 {len(docs)}개 ({dict(stats)})",
            f"- 생성 SQL: {', '.join('`' + f.name + '`' for f in files)} — INSERT {n}행 (파일 순서대로 실행)",
            f"- 자체 FK 점검: {'이상 없음' if not errs else f'{len(errs)}건 문제'}", ""]
     rep += ["## 테이블별 행 수", "", "| 테이블 | 행 |", "|---|---|"] + [f"| mqi.{t} | {len(b.T[t])} |" for t in ORDER if b.T[t]]
