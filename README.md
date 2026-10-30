@@ -45,7 +45,9 @@ iMEB3 작업일보 데이터를 Firestore(M1-2 개인과제)에서 팀과제 Sup
 3. 메인 대시보드는 로그인 없이 조회. "관리자 입력 🔒" 탭만 Supabase Auth 이메일 로그인(계정은 `py tools/auth_admin.py create <email>`).
 
 ## 배포 (Render)
-`render.yaml` Blueprint 로 배포한다. 절차와 환경변수는 `docs/배포_준비_20261030.md`.
+- 대시보드: https://m1-3-imeb3-dashboard.onrender.com (2026-10-30, 개인 IMEB3 DB 기준. 무료 플랜이라 첫 접속은 30~60초 대기)
+- 상태 확인: https://m1-3-imeb3-dashboard.onrender.com/api/health
+- `render.yaml` Blueprint 로 배포한다. 절차와 환경변수는 로컬 `docs/배포_준비_20261030.md`.
 3. 입력·관리: http://127.0.0.1:8800/manage.html (직접 입력 / 엑셀·CSV / 이미지 / 사슬 보완 / 연결 확인)
 
 ## 구조
