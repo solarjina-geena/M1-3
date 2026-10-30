@@ -20,6 +20,10 @@ from pathlib import Path
 
 import xlrd
 
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from accuracy.xlsbook import open_book, date_cell_text  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_XLS = ROOT.parent / "M3-1" / "m3-1" / "data" / "imeb3사출작업일보_8월_.xls"
 DEFAULT_CSV = ROOT.parent / "M1-2" / "firestore_import" / "20260801-20260930_firestore_unified.csv"
@@ -41,6 +45,9 @@ R_CHECK = 14                                # 초기제품 3Shot 확인 행(+2):
 def s(sh, r, c) -> str:
     if r >= sh.nrows or c >= sh.ncols:
         return ""
+    t = date_cell_text(sh, r, c)
+    if t is not None:
+        return t
     v = sh.cell_value(r, c)
     if isinstance(v, float) and v.is_integer():
         v = int(v)
@@ -140,7 +147,7 @@ def parse_block(sh, r0: int, sheet: str) -> list[dict]:
 
 
 def parse_xls(path: Path) -> list[dict]:
-    wb = xlrd.open_workbook(str(path))
+    wb = open_book(path)
     docs = []
     for sh in wb.sheets():
         r = 0
@@ -173,26 +180,30 @@ def existing_keys(csv_path: Path) -> set[tuple]:
 
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    argv = list(sys.argv[1:])
+    out = OUT
+    if "--out" in argv:                      # 결과 CSV 경로 지정(기본은 8월 파일 이름). 9월 정답지 등 다른 입력에 쓸 때 필수
+        i = argv.index("--out"); out = Path(argv[i + 1]); del argv[i:i + 2]
+    args = [a for a in argv if not a.startswith("--")]
     xls = Path(args[0]) if args else DEFAULT_XLS
     skip = None
-    if "--skip-csv" in sys.argv:
-        i = sys.argv.index("--skip-csv")
-        skip = Path(sys.argv[i + 1]) if i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith("--") else DEFAULT_CSV
+    if "--skip-csv" in argv:
+        i = argv.index("--skip-csv")
+        skip = Path(argv[i + 1]) if i + 1 < len(argv) and not argv[i + 1].startswith("--") else DEFAULT_CSV
     docs = parse_xls(xls)
     have = existing_keys(skip) if skip else set()
     kept, dropped = [], []
     for d in docs:
         k = (d["variant"], d["date"], d["details"]["shift"])
         (dropped if k in have else kept).append(d)
-    OUT.parent.mkdir(exist_ok=True)
-    with open(OUT, "w", encoding="utf-8-sig", newline="") as f:
+    out.parent.mkdir(exist_ok=True)
+    with open(out, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["record_date", "source_file", "source_type", "action", "collection", "document_id", "payload_json", "expected_document_json", "note"])
         w.writeheader()
         for d in kept:
             w.writerow({"record_date": d["date"], "source_file": xls.name, "source_type": "엑셀 전사본", "action": "ADD", "collection": "data",
                         "document_id": d["id"], "payload_json": json.dumps(d, ensure_ascii=False), "expected_document_json": "", "note": ""})
-    print(f"엑셀 {xls.name}: 일보 문서 {len(docs)}건(주/야 분리) → 저장 {len(kept)}건, 통합 CSV 와 겹쳐 제외 {len(dropped)}건 → {OUT}")
+    print(f"엑셀 {xls.name}: 일보 문서 {len(docs)}건(주/야 분리) → 저장 {len(kept)}건, 통합 CSV 와 겹쳐 제외 {len(dropped)}건 → {out}")
     print("| 모델 | 날짜 | 교대 | 생산량 | 시간 | 불량 | 수지 LOT | 비고 |")
     print("|---|---|---|---:|---:|---|---|---|")
     for d in docs:
