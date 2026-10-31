@@ -6,11 +6,16 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import json
+import re
+import uuid
+
 from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from ..agent.claude_agent import chat as agent_chat
+from ..fishbone import to_rows
 from ..auth import supabase_auth as sauth
 from ..config import settings
 from ..db.supabase_client import SupabaseError
@@ -68,6 +73,7 @@ def health():
         info.update(get_repository().health())
     except SupabaseError as e:
         info["db"] = f"not configured: {e}"
+    info["storage"] = "supabase"
     return info
 
 
@@ -242,13 +248,48 @@ def links_confirm(body: ConfirmIn, authorization: Optional[str] = Header(None)):
 
 # ---------------------------------------------------------------- AI
 class ChatIn(BaseModel):
-    question: str
+    """두 가지 요청 모양을 받는다. (1) 표 화면: {question, history} (2) 전체흐름 대시보드(M1-2 계약): {message, conversation_id, context}"""
+    question: Optional[str] = None
+    message: Optional[str] = None
     history: list[dict[str, Any]] = []
+    conversation_id: Optional[str] = None
+    context: dict[str, Any] = {}
+
+
+_conversations: dict[str, list[dict[str, Any]]] = {}   # conversation_id -> 최근 대화(서버 메모리, 재시작하면 비워짐)
 
 
 @router.post("/chat")
 def chat(body: ChatIn):
-    q = body.question.strip()
+    q = (body.message or body.question or "").strip()
     if not q or len(q) > 4000:
         raise HTTPException(400, "질문은 1~4000자")
-    return agent_chat(_repo(), body.history, q)
+    cid = body.conversation_id or uuid.uuid4().hex
+    history = body.history or _conversations.get(cid, [])
+    out = agent_chat(_repo(), history, q)
+    _conversations[cid] = (history + [{"role": "user", "content": q}, {"role": "assistant", "content": out.get("answer", "")}])[-20:]
+    if len(_conversations) > 500:
+        _conversations.pop(next(iter(_conversations)))
+    vm = re.search(r"(HSV|OV|IV)", q.upper())
+    return {**out, "conversation_id": cid, "storage": "supabase",
+            "ai_provider": "ANTHROPIC_CLAUDE" if out.get("model") else "FALLBACK_AI_ERROR",
+            "graph_context": {"variant": vm.group(1)} if vm else {}}
+
+
+# ---------------------------------------------------------------- 전체흐름(피시본) 대시보드 데이터 (M1-2 화면 계약 그대로, 데이터만 mqi)
+@router.get("/data")
+def fishbone_data(response: Response):
+    rows = _wrap(_repo().fishbone_rows)
+    response.headers["X-Data-Source"] = "supabase"
+    response.headers["X-Data-Source-Info"] = json.dumps({"record_count": len(rows), "schema": settings.schema}, ensure_ascii=False)
+    return to_rows(rows)
+
+
+@router.get("/workbook-evidence")
+def workbook_evidence():
+    return {"available": False, "note": "엑셀 보강 근거는 mqi 적재값에 이미 반영됨(전사본 = HUMAN_VERIFIED)"}
+
+
+@router.get("/process-conditions")
+def process_conditions(limit: int = 5000):
+    return []   # 사출조건(parameter_observation) 적재 전. 적재되면 여기서 뷰로 돌려준다

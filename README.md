@@ -38,9 +38,19 @@ iMEB3 작업일보 데이터를 Firestore(M1-2 개인과제)에서 팀과제 Sup
 - 2026-10-30(밤): OCR 정답률 측정기 `tools/accuracy/`(정답지 xls/xlsx → 칸, DB 뷰 `public.m13_accuracy_cells`, 팀 기준서 v1.0 판정식). 확인 전 초안: 생산수량·불량수량 59.0%(534칸). 결과·칸 목록은 로컬 docs/정답률, outputs/accuracy.
 - 2026-10-30(밤): 8월 조립작업일보 엑셀 전사본 적재. `tools/assembly_xls_to_docs.py`(IV/OV·HSV 2호기/스티칭 시트, 모델은 ITEM 줄로 구분). CSV 에 모델 확정 문서가 있는 날은 제외하고 OV/HSV 보류 구간 18장만 적재(차이분 319행). CA LOT 57→74, 완전 사슬 41→49. CSV vs 전사본 수량 대조표를 로컬 docs 에 기록.
 - 2026-10-30(저녁): 8월 사출작업일보 엑셀 전사본(`imeb3사출작업일보_8월_.xls`, 18장) 적재. `tools/injection_xls_to_docs.py` 로 통합 CSV 양식 문서(주/야 23건)를 만들어 변환기에 함께 입력, 차이분 120행 적용. 완전 사슬 CA LOT 25 → 41 / 57.
+- 2026-10-31: 전체흐름 대시보드를 M1-2 화면 그대로로 교체(`frontend/index.html`), 기존 표 화면은 `tables.html`. 뷰 `public.m13_fishbone_rows` + `/api/data`·`/api/chat`(M1-2 계약) 추가. OCR 정답률 확인 후 62.3%, 기획서·명세서·아키텍처 초안.
 - 2026-10-30: 배포 준비. Supabase Auth 이메일 로그인(팀 Streamlit 앱 `auth.py` 규칙을 FastAPI 로 이식, `MQI_ALLOWED_EMAILS` 허용 목록), 대시보드에 "관리자 입력 🔒" 탭(팀 OCR 검토·적재 앱 연결 + 보조 입력 manage.html), AI 생성 표시, `render.yaml`, `tools/auth_admin.py`. 기록: `docs/배포_준비_20261030.md`.
 
 > `docs/` 의 작업 기록(사슬_*, 검사규칙, BA_CA 수량차이, 배포_준비)은 실제 제조 기록을 담고 있어 **로컬 전용**(git 제외)이다. 공개 저장소에는 `docs/M3-1_과제보고서.md` 만 올린다.
+
+## 화면 구성 (2026-10-31)
+| 경로 | 내용 |
+|---|---|
+| `frontend/index.html` | **전체흐름 대시보드** — 개인과제 M1-2 화면을 그대로 가져옴(모델 색 IV 검정·OV 노랑·HSV 파랑, 공정 뼈대 피시본 그래프, 원소재 LOT 가지, BA·CA 수량 GAP, 검사일별 상자, AI 대화창·대화 기록). 데이터만 `mqi`(뷰 `m13_fishbone_rows` → `/api/data`) |
+| `frontend/tables.html` | 표·그래프 보기(개요·공정별 일자 그래프·사슬 점검표·관리자 입력 탭) |
+| `frontend/manage.html` | 관리 화면(팀원 로그인 후 직접 입력·엑셀·사진 AI 판독·연결 확인) |
+
+M1-2 화면 규칙은 `../M1-2/전체흐름_그래프_규칙.md` 를 따른다. 화면 코드에 실명이 남지 않도록 1차검사(훈련) 판정은 이름이 아니라 검사 차수로 한다.
 
 ## 실행
 1. `backend/.env.example` → `backend/.env.personal` 복사 후 `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PUBLISHABLE_KEY`, `ANTHROPIC_API_KEY`, `MQI_ALLOWED_EMAILS` 채우기

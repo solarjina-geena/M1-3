@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iMEB3 품질 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--line:#c3c2b7;--border:rgba(11,11,11,.10);
+  --iv:#2a78d6;--ov:#eb6834;--hsv:#1baf7a;--seq:#2a78d6;--good:#0ca30c;--warn:#fab219;--bad:#d03b3b;--chip:#eef2f8}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0d0d0d;--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--line:#383835;--border:rgba(255,255,255,.10);--iv:#3987e5;--ov:#d95926;--hsv:#199e70;--seq:#3987e5;--chip:#24262b}}
+:root[data-theme=dark]{--bg:#0d0d0d;--surface:#1a1a19;--ink:#f0efec;--ink2:#c3c2b7;--grid:#2c2c2a;--line:#383835;--border:rgba(255,255,255,.10);--iv:#3987e5;--ov:#d95926;--hsv:#199e70;--seq:#3987e5;--chip:#24262b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,"Malgun Gothic",sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0 12px 0 0}.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{border:1px solid var(--border);background:var(--chip);color:var(--ink2);border-radius:999px;padding:3px 11px;cursor:pointer;font-size:13px}
+.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}input[type=date]{border:1px solid var(--border);background:var(--surface);color:var(--ink);border-radius:6px;padding:4px 6px}
+.badge{font-size:12px;color:var(--muted);margin-left:auto}.badge b{color:var(--ink2)}a.manage{font-size:13px;color:var(--iv);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:4px 10px}
+nav.tabs{display:flex;gap:2px;padding:8px 16px 0;border-bottom:1px solid var(--border);overflow-x:auto}nav.tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:8px 12px;color:var(--ink2);cursor:pointer;font-size:14px;white-space:nowrap}
+nav.tabs button.on{color:var(--ink);border-color:var(--ink)}main{display:grid;grid-template-columns:1fr 360px;gap:16px;padding:16px}@media(max-width:1000px){main{grid-template-columns:1fr}}
+section.view{display:none}section.view.on{display:block}.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px}.tile .k{font-size:12px;color:var(--muted)}.tile .v{font-size:22px;font-variant-numeric:tabular-nums}.tile .s{font-size:12px;color:var(--ink2)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px}.card h3{margin:0 0 8px;font-size:14px;font-weight:600}.card .sub{font-size:12px;color:var(--muted);margin:-6px 0 8px}
+.chart{position:relative;height:260px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:5px 6px;border-bottom:1px solid var(--grid);text-align:left;vertical-align:top}th{color:var(--muted);font-weight:500}td.num{text-align:right;font-variant-numeric:tabular-nums}
+.st{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;border:1px solid var(--border)}.st.ok{color:var(--good)}.st.cand{color:#9a6b00}.st.bad{color:var(--bad)}
+details summary{cursor:pointer;color:var(--ink2);font-size:13px}.flow{display:flex;gap:6px;align-items:stretch;overflow-x:auto;padding:4px 0}.node{flex:1;min-width:120px;border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:var(--bg)}.node b{display:block}.node small{color:var(--muted)}
+.arrow{align-self:center;color:var(--muted)}aside .card{position:sticky;top:120px}#chatlog{height:420px;overflow:auto;border:1px solid var(--grid);border-radius:8px;padding:8px;background:var(--bg)}
+.msg{margin:6px 0;white-space:pre-wrap}.msg.u{color:var(--ink2)}.msg.a{background:var(--surface);border:1px solid var(--grid);border-radius:8px;padding:8px}.msg .tools{font-size:11px;color:var(--muted)}
+#q{width:100%;border:1px solid var(--border);border-radius:8px;padding:8px;background:var(--surface);color:var(--ink);resize:vertical}button.primary{background:var(--ink);color:var(--bg);border:none;border-radius:8px;padding:7px 14px;cursor:pointer}
+button.ghost{background:none;border:1px solid var(--border);color:var(--ink2);border-radius:8px;padding:5px 10px;cursor:pointer}.err{color:var(--bad)}.muted{color:var(--muted)}svg.trace text{font-size:11px;fill:var(--ink)}
+</style>
+</head>
+<body>
+<header>
+  <h1>iMEB3 품질 대시보드 <span class="muted" style="font-size:12px;font-weight:400">Supabase mqi · M1-3</span></h1>
+  <div class="chips" id="modelChips"><span class="chip on" data-m="">전체</span><span class="chip" data-m="IV">IV</span><span class="chip" data-m="OV">OV</span><span class="chip" data-m="HSV">HSV</span></div>
+  <input type="date" id="from"> ~ <input type="date" id="to"> <button class="ghost" id="apply">적용</button>
+  <span class="badge" id="envBadge">연결 확인 중…</span>
+  <a class="manage" href="manage.html">입력·관리 →</a>
+</header>
+<nav class="tabs" id="tabs"><a href="index.html" style="padding:8px 12px;font-size:14px;text-decoration:none;color:var(--ink)">◀ 전체흐름</a>
+  <button data-v="overview" class="on">전체흐름</button><button data-v="IMEB3_INJECTION">사출</button><button data-v="IMEB3_STITCHING">스티칭</button>
+  <button data-v="IMEB3_WINDING">권선(BA)</button><button data-v="IMEB3_CA_PRESS">압입(CA)</button><button data-v="IMEB3_FINAL_INSPECTION">최종검사</button><button data-v="chain">LOT 사슬</button><button data-v="admin">관리자 입력 🔒</button>
+</nav>
+<main>
+<div>
+  <section class="view on" id="v-overview">
+    <div class="tiles" id="ovTiles"></div>
+    <div class="card"><h3>공정 흐름과 LOT 사슬</h3><div class="sub">각 칸: 생산량 합계 / 기록된 작업일수. 사슬 = CA 제품 LOT 기준 수지→사출→스티칭→권선→압입 FK 연결</div><div class="flow" id="flow"></div></div>
+    <div class="card"><h3>사슬이 끊긴 CA 제품 LOT (상위 20)</h3><div class="sub">first_gap = 다음에 넣어야 할 기록. 전체 목록은 LOT 사슬 탭</div><div id="ovGaps"></div></div>
+  </section>
+  <section class="view" id="v-process">
+    <div class="tiles" id="pTiles"></div>
+    <div class="card"><h3 id="pTitle1">일자별 생산량</h3><div class="sub">모델별. 빈 날은 기록 없음(0 아님)</div><div class="chart"><canvas id="c1"></canvas></div></div>
+    <div class="card"><h3 id="pTitle2">일자별 불량 수량</h3><div class="sub">작업일보에 적힌 불량 합계(숫자로 읽힌 항목만)</div><div class="chart"><canvas id="c2"></canvas></div></div>
+    <div class="card"><h3>불량 유형별 합계</h3><div class="chart" style="height:300px"><canvas id="c3"></canvas></div></div>
+    <div class="card"><details><summary>표로 보기</summary><div id="pTable"></div></details></div>
+  </section>
+  <section class="view" id="v-chain">
+    <div class="card"><h3>LOT 추적</h3><div class="sub">LOT 코드(예 260903D1)를 입력하면 상위·하위 연결, 투입 자재, 최종검사 결과를 보여줍니다</div>
+      <div style="display:flex;gap:8px"><input id="lotq" placeholder="260903D1" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;background:var(--surface);color:var(--ink)"><button class="primary" id="lotgo">추적</button></div>
+      <div id="lotout" style="margin-top:10px"></div></div>
+    <div class="card"><h3>사슬 점검표 (CA 제품 LOT)</h3><div class="sub"><label><input type="checkbox" id="onlyGaps" checked> 끊긴 것만</label> · depth 4 = 수지까지 완전</div><div id="gapsTable"></div></div>
+  </section>
+  <section class="view" id="v-admin">
+    <div class="card"><h3>OCR 데이터 입력 — 팀 검토·적재 앱</h3><div class="sub">팀 저장소 M3-1 의 Raw Data 관리 준비실(Streamlit, 이*규). 작업일보 4종(사출·스티칭·조립·최종검사)을 셀 단위로 판독·검토·승인한 뒤 mqi 에 적재합니다. 로그인은 팀 Supabase Auth 계정으로 앱 안에서 합니다.</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a id="teamOcrLink" class="manage" href="#" target="_blank" rel="noopener">새 창에서 열기 ↗</a><button class="ghost" id="teamOcrEmbed">이 화면 안에 띄우기</button><span class="muted" id="teamOcrNote">Render 무료 플랜이라 첫 접속은 깨어나는 데 30~60초 걸릴 수 있습니다.</span></div>
+      <div id="teamOcrFrameWrap" style="display:none;margin-top:10px"><iframe id="teamOcrFrame" title="팀 OCR 검토·적재 앱" style="width:100%;height:900px;border:1px solid var(--border);border-radius:8px;background:var(--bg)"></iframe></div></div>
+    <div class="card"><h3>보조 입력 (M1-3, 팀원 로그인)</h3><div class="sub">작업일보 직접 입력·엑셀 업로드·사진 AI 판독·사슬 보완·연결 확인. 허용 이메일 목록의 Supabase Auth 계정으로 로그인한 사람만 DB 에 저장할 수 있습니다.</div>
+      <div id="adminLogin" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="a_email" type="email" placeholder="팀원 이메일" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;background:var(--surface);color:var(--ink);width:220px">
+        <input id="a_pw" type="password" placeholder="비밀번호" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;background:var(--surface);color:var(--ink);width:160px">
+        <button class="primary" id="a_login">로그인</button><button class="ghost" id="a_logout" style="display:none">로그아웃</button><span id="a_status" class="muted"></span></div></div>
+    <div class="card" id="adminFrameCard" style="display:none;padding:0;overflow:hidden"><iframe id="adminFrame" title="작업일보 입력·관리" style="width:100%;height:1500px;border:0;background:var(--bg)"></iframe></div>
+  </section>
+</div>
+<aside><div class="card"><h3>AI 창</h3><div class="sub">답변은 AI(Claude)가 생성한 내용입니다. 숫자는 DB 조회 결과만 씁니다. 도구 호출 내역이 함께 표시됩니다.</div>
+  <div id="chatlog"></div><textarea id="q" rows="3" placeholder="예) 9월 IV 권선 생산량 추이와 불량 상위 3개는? / 260903D1 LOT 의 상위 LOT 은?"></textarea>
+  <div style="display:flex;gap:8px;margin-top:6px"><button class="primary" id="ask">질문</button><button class="ghost" id="clearChat">지우기</button></div></div></aside>
+</main>
+<script>
+const $=s=>document.querySelector(s), api=async(p,o)=>{const r=await fetch(p,o);if(!r.ok){throw new Error((await r.json()).detail||r.statusText)}return r.json()};
+const COL={IV:getComputedStyle(document.documentElement).getPropertyValue('--iv').trim(),OV:getComputedStyle(document.documentElement).getPropertyValue('--ov').trim(),HSV:getComputedStyle(document.documentElement).getPropertyValue('--hsv').trim()};
+const LABEL={IMEB3_INJECTION:'사출',IMEB3_STITCHING:'스티칭',IMEB3_WINDING:'권선(BA)',IMEB3_CA_PRESS:'압입(CA)',IMEB3_FINAL_INSPECTION:'최종검사'};
+const ORDER=['IMEB3_INJECTION','IMEB3_STITCHING','IMEB3_WINDING','IMEB3_CA_PRESS','IMEB3_FINAL_INSPECTION'];
+const st={model:'',from:'',to:'',view:'overview',charts:{}};
+const fmt=n=>n==null?'—':Number(n).toLocaleString();const q=()=>`model=${st.model}&from=${st.from}&to=${st.to}`;
+const stBadge=s=>`<span class="st ${s==='CONFIRMED'?'ok':s==='CANDIDATE'?'cand':'bad'}">${s||'—'}</span>`;
+function chart(id,cfg){if(st.charts[id])st.charts[id].destroy();Chart.defaults.color=getComputedStyle(document.documentElement).getPropertyValue('--muted').trim();Chart.defaults.borderColor=getComputedStyle(document.documentElement).getPropertyValue('--grid').trim();st.charts[id]=new Chart($('#'+id),cfg)}
+const baseOpts={responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'top',labels:{boxWidth:10,usePointStyle:true}}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,grid:{color:Chart.defaults.borderColor},border:{display:false}}}};
+
+async function health(){try{const h=await api('/api/health');$('#envBadge').innerHTML=`<b>${h.env}</b> · ${h.project_ref||'ref 없음'} · DB ${h.db==='ok'?'<span class="st ok">연결</span>':'<span class="st bad">'+h.db+'</span>'} · AI ${h.anthropic_key==='set'?'<span class="st ok">키 있음</span>':'<span class="st bad">키 없음</span>'}${h.read_only?' · <b>읽기전용</b>':''}`;}catch(e){$('#envBadge').innerHTML='<span class="err">백엔드 연결 실패: '+e.message+'</span>'}}
+
+async function overview(){const s=await api('/api/summary?model='+st.model);
+  $('#ovTiles').innerHTML=s.processes.map(p=>`<div class="tile"><div class="k">${LABEL[p.process_code]}</div><div class="v">${fmt(p.qty)}</div><div class="s">${p.days}일 · 불량 ${fmt(p.defects)}</div></div>`).join('')+
+   `<div class="tile"><div class="k">CA 제품 LOT 사슬</div><div class="v">${s.chain.complete}<span class="muted" style="font-size:14px"> / ${s.chain.ca_lots}</span></div><div class="s">수지까지 완전 연결 · 검사 연결 ${s.chain.with_inspection}</div></div>`;
+  const byP=Object.fromEntries(s.processes.map(p=>[p.process_code,p]));const d=s.chain.by_depth||{};
+  $('#flow').innerHTML=`<div class="node"><b>원자재</b><small>수지·리드핀·와이어·케이스</small></div><span class="arrow">→</span>`+ORDER.map((c,i)=>`<div class="node"><b>${LABEL[c]}</b>${fmt(byP[c].qty)}<small> / ${byP[c].days}일</small><br><small>${i<4?`사슬 depth≥${4-i}: ${Object.entries(d).filter(([k])=>+k>=4-i).reduce((a,[,v])=>a+v,0)}`:`검사 연결 LOT ${s.chain.with_inspection}`}</small></div>${i<4?'<span class="arrow">→</span>':''}`).join('');
+  const g=(await api('/api/lots/gaps?model='+st.model+'&only_gaps=true')).slice(0,20);$('#ovGaps').innerHTML=gapsTable(g)}
+function gapsTable(g){if(!g.length)return '<div class="muted">없음</div>';return `<table><tr><th>모델</th><th>CA LOT</th><th>날짜</th><th>검사</th><th>BA</th><th>스티칭</th><th>사출</th><th>수지</th><th>깊이</th><th>다음에 넣을 기록</th></tr>`+g.map(r=>`<tr><td>${r.model_code}</td><td><a href="#" onclick="trace('${r.ca_lot}','${r.model_code}');return false">${r.ca_lot}</a></td><td>${r.ca_date}</td><td class="num">${r.inspections||'—'}</td><td>${r.ba_lot||'—'}</td><td>${r.sti_lot||'—'}</td><td>${r.inj_lot||'—'}</td><td>${r.resin_lots||'—'}</td><td class="num">${r.depth}/4</td><td>${r.first_gap}</td></tr>`).join('')+'</table>'}
+
+async function processView(code){const series=await api(`/api/process/${code}/series?`+q());const defs=await api(`/api/defects?process=${code}&`+q());
+  const models=['IV','OV','HSV'].filter(m=>series.some(r=>r.model===m));const dates=[...new Set(series.map(r=>r.date))];
+  const tot=series.reduce((a,r)=>a+(r.qty||0),0),dq=series.reduce((a,r)=>a+(r.defects||0),0),mins=series.reduce((a,r)=>a+(r.minutes||0),0);
+  $('#pTiles').innerHTML=`<div class="tile"><div class="k">${LABEL[code]} ${code==='IMEB3_FINAL_INSPECTION'?'검사량':'생산량'} 합계</div><div class="v">${fmt(tot)}</div><div class="s">${dates.length}일 기록</div></div><div class="tile"><div class="k">불량 합계</div><div class="v">${fmt(dq)}</div><div class="s">${tot?(dq/tot*100).toFixed(2)+'%':'—'}</div></div>`+(mins?`<div class="tile"><div class="k">작업시간</div><div class="v">${fmt(Math.round(mins/60))}h</div><div class="s">시간당 ${fmt(Math.round(tot/(mins/60)))}</div></div>`:'')+`<div class="tile"><div class="k">모델</div><div class="v" style="font-size:16px">${models.join(' · ')||'—'}</div></div>`;
+  $('#pTitle1').textContent=code==='IMEB3_FINAL_INSPECTION'?'일자별 검사량':'일자별 생산량';
+  const ds=k=>models.map(m=>({label:m,data:dates.map(d=>{const r=series.find(x=>x.date===d&&x.model===m);return r?r[k]:null}),backgroundColor:COL[m],borderColor:COL[m],borderRadius:4,maxBarThickness:18,borderSkipped:false}));
+  chart('c1',{type:'bar',data:{labels:dates,datasets:ds('qty')},options:baseOpts});
+  chart('c2',{type:'bar',data:{labels:dates,datasets:ds('defects')},options:baseOpts});
+  const top=defs.slice(0,12);chart('c3',{type:'bar',data:{labels:top.map(d=>d.defect_name),datasets:[{label:'불량 수량',data:top.map(d=>d.qty),backgroundColor:getComputedStyle(document.documentElement).getPropertyValue('--seq').trim(),borderRadius:4,maxBarThickness:16}]},options:{...baseOpts,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,grid:{color:Chart.defaults.borderColor},border:{display:false}},y:{grid:{display:false}}}}});
+  $('#pTable').innerHTML=`<table><tr><th>날짜</th><th>모델</th><th>건</th><th>수량</th><th>불량</th><th>불량률</th><th>작업시간(분)</th></tr>`+series.map(r=>`<tr><td>${r.date}</td><td>${r.model}</td><td class="num">${r.runs}</td><td class="num">${fmt(r.qty)}</td><td class="num">${fmt(r.defects)}</td><td class="num">${r.defect_rate==null?'—':r.defect_rate+'%'}</td><td class="num">${fmt(r.minutes)}</td></tr>`).join('')+'</table>'}
+
+async function chainView(){const only=$('#onlyGaps').checked;const g=await api('/api/lots/gaps?model='+st.model+'&only_gaps='+only);$('#gapsTable').innerHTML=gapsTable(g)}
+async function trace(code,model){show('chain');$('#lotq').value=code;const t=await api(`/api/lot/${encodeURIComponent(code)}?model=${model||st.model}`);if(!t.found){$('#lotout').innerHTML='<div class="muted">LOT 없음: '+code+'</div>';return}
+  const cols=ORDER.slice(0,4);const byProc=Object.fromEntries(cols.map(c=>[c,t.nodes.filter(n=>n.process_code===c)]));const W=700,colW=W/4,rowH=34+(t.materials.length?52:0);const rows=Math.max(1,...cols.map(c=>byProc[c].length));const H=rows*rowH+40;const pos={};
+  cols.forEach((c,i)=>byProc[c].forEach((n,j)=>pos[n.lot_id]={x:i*colW+colW/2,y:30+j*rowH}));
+  const edges=t.edges.filter(e=>pos[e.from]&&pos[e.to]).map(e=>`<line x1="${pos[e.from].x+55}" y1="${pos[e.from].y}" x2="${pos[e.to].x-55}" y2="${pos[e.to].y}" stroke="${e.status==='CONFIRMED'?'var(--good)':'var(--warn)'}" stroke-width="2"><title>${e.status} ${e.evidence||''}</title></line>`).join('');
+  // 자재 가지(개인과제 그래프처럼): 사출=수지, 스티칭=리드핀, BA=와이어, CA=케이스. 같은 LOT·같은 자재는 날짜를 모아 칩 하나로.
+  const MAT_HOME={IMEB3_RESIN:'IMEB3_INJECTION',IMEB3_LEAD_PIN:'IMEB3_STITCHING',IMEB3_WIRE:'IMEB3_WINDING',IMEB3_UPPER_CASE:'IMEB3_CA_PRESS',IMEB3_LOWER_CASE:'IMEB3_CA_PRESS'};
+  const MAT_SHORT={IMEB3_RESIN:'수지',IMEB3_LEAD_PIN:'리드핀',IMEB3_WIRE:'와이어',IMEB3_UPPER_CASE:'상부케이스',IMEB3_LOWER_CASE:'하부케이스',IMEB3_BOBBIN:'보빈',IMEB3_LEAD_PIN_INSERT:'인서트'};
+  const matBy={};t.materials.forEach(m=>{const n=Object.values(t.nodes).find(x=>x.lot_code===m.lot_code&&x.process_code===m.process_code);if(!n||!pos[n.lot_id])return;const key=n.lot_id+'|'+m.material_code;(matBy[key]=matBy[key]||{lot_id:n.lot_id,code:m.material_code,name:MAT_SHORT[m.material_code]||m.material_name,home:MAT_HOME[m.material_code]===m.process_code,dates:new Set(),status:m.linkage_status}).dates.add(m.material_lot_date?m.material_lot_date.slice(5):(m.recorded_lot_code_raw||'?').slice(0,8))});
+  const matChips=Object.values(matBy).reduce((acc,m)=>{(acc[m.lot_id]=acc[m.lot_id]||[]).push(m);return acc},{});
+  const extra=Math.max(0,...Object.values(matChips).map(a=>a.length));const H2=H+extra*16;
+  const nodes=Object.values(t.nodes).filter(n=>pos[n.lot_id]).map(n=>{const chips=(matChips[n.lot_id]||[]).sort((a,b)=>(b.home-a.home)).map((m,k)=>`<g transform="translate(0,${22+k*16})"><line x1="-50" y1="-8" x2="-50" y2="0" stroke="var(--muted)" stroke-dasharray="2 2"/><rect x="-50" y="0" width="100" height="13" rx="4" fill="${m.home?'var(--chip)':'var(--surface)'}" stroke="${m.status==='CONFIRMED'?'var(--good)':'var(--warn)'}" stroke-dasharray="${m.home?'':'3 2'}"/><text text-anchor="middle" y="10" style="font-size:9px">${m.name} ${[...m.dates].slice(0,2).join(',')}${m.dates.size>2?'…':''}</text><title>${m.name} LOT: ${[...m.dates].join(', ')} (${m.status}${m.home?'':' · 타공정 자재 기재'})</title></g>`).join('');
+    return `<g transform="translate(${pos[n.lot_id].x},${pos[n.lot_id].y})"><rect x="-55" y="-13" width="110" height="26" rx="6" fill="${n.lot_id===t.root?'var(--chip)':'var(--surface)'}" stroke="var(--line)"/><text text-anchor="middle" y="4">${n.lot_code}</text>${chips}</g>`}).join('');
+  const heads=cols.map((c,i)=>`<text x="${i*colW+colW/2}" y="12" text-anchor="middle" fill="var(--muted)">${LABEL[c]}</text>`).join('');
+  $('#lotout').innerHTML=`<svg class="trace" viewBox="0 0 ${W} ${H2}" width="100%" style="max-height:${Math.min(560,H2+40)}px">${heads}${edges}${nodes}</svg><div class="muted" style="font-size:12px">선 색: <span style="color:var(--good)">■ CONFIRMED</span> <span style="color:var(--warn)">■ CANDIDATE</span>. 각 LOT 코드는 공정별 산출 LOT(YYMMDD+교대+순번). LOT 아래 칩 = 투입 자재 LOT 가지(사출 수지 · 스티칭 리드핀 · BA 와이어 · CA 케이스). 점선 테두리 = 다른 공정 자재가 그 일보에 함께 적힌 것</div>
+   <h4 style="margin:10px 0 4px">투입 원자재</h4>${t.materials.length?`<table><tr><th>LOT</th><th>공정</th><th>자재</th><th>원문</th><th>자재 LOT 날짜</th><th>상태</th></tr>${t.materials.map(m=>`<tr><td>${m.lot_code}</td><td>${LABEL[m.process_code]}</td><td>${m.material_name}</td><td>${m.recorded_lot_code_raw||''}</td><td>${m.material_lot_date||'—'}</td><td>${stBadge(m.linkage_status)}</td></tr>`).join('')}</table>`:'<div class="muted">기록 없음</div>'}
+   <h4 style="margin:10px 0 4px">최종검사</h4>${t.inspections.length?`<table><tr><th>LOT</th><th>검사일</th><th>구분</th><th>검사량</th><th>검사 LOT 표기</th><th>BOX</th><th>상태</th></tr>${t.inspections.map(i=>`<tr><td>${i.lot_code}</td><td>${i.inspection_date}</td><td>${i.inspection_type}</td><td class="num">${fmt(i.inspected_qty_ea)}</td><td>${i.inspection_lot_raw}</td><td class="num">${i.recorded_box_count??'—'}</td><td>${stBadge(i.lot_linkage_status)}</td></tr>`).join('')}</table>`:'<div class="muted">기록 없음</div>'}`}
+
+function show(v){st.view=v;document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));document.querySelectorAll('section.view').forEach(s=>s.classList.remove('on'));
+  if(v==='overview'){$('#v-overview').classList.add('on');run(overview)}else if(v==='chain'){$('#v-chain').classList.add('on');run(chainView)}else if(v==='admin'){$('#v-admin').classList.add('on');run(adminView)}else{$('#v-process').classList.add('on');run(()=>processView(v))}}
+// ---- 관리자 입력: Supabase Auth 이메일 로그인 (팀 Streamlit 앱과 같은 규칙). 세션은 sessionStorage 'm13auth' 에 두고 manage.html(iframe) 과 공유
+const authGet=()=>{try{return JSON.parse(sessionStorage.getItem('m13auth')||'null')}catch(e){return null}};
+async function adminView(){const cfg=await api('/api/auth/config');const a=authGet();const need=cfg.login_required;
+  if(cfg.team_ocr_url){$('#teamOcrLink').href=cfg.team_ocr_url;$('#teamOcrEmbed').onclick=()=>{$('#teamOcrFrameWrap').style.display='';$('#teamOcrFrame').src=cfg.team_ocr_url+(cfg.team_ocr_url.includes('?')?'&':'?')+'embed=true';$('#teamOcrNote').textContent='화면이 비어 있으면 앱이 iframe 을 막는 것입니다. 새 창에서 열기를 쓰세요.'}}else{$('#teamOcrNote').textContent='TEAM_OCR_APP_URL 미설정'}
+  const showFrame=ok=>{$('#adminFrameCard').style.display=ok?'':'none';if(ok){const f=$('#adminFrame');const src='manage.html?embed=1';if(f.getAttribute('src')!==src)f.setAttribute('src',src);else f.contentWindow.location.reload()}};
+  $('#a_logout').style.display=a?'':'none';$('#a_email').style.display=$('#a_pw').style.display=$('#a_login').style.display=a?'none':'';
+  if(!cfg.supabase_login&&need){$('#a_status').textContent='이메일 로그인이 설정되지 않았습니다 (SUPABASE_PUBLISHABLE_KEY·MQI_ALLOWED_EMAILS). 아래 화면에서 관리자 토큰으로 확인하세요.';showFrame(true);return}
+  if(!need){$('#a_status').textContent='로컬 개방 모드(로그인 설정 없음)';showFrame(true);return}
+  if(a){try{const me=await api('/api/auth/me',{headers:{Authorization:'Bearer '+a.access_token}});$('#a_status').textContent=me.email+' 로그인됨'+(cfg.read_only?' · 읽기 전용 DB(저장 불가)':'');showFrame(true)}catch(e){sessionStorage.removeItem('m13auth');$('#a_status').textContent='세션 만료: 다시 로그인하세요';$('#a_logout').style.display='none';$('#a_email').style.display=$('#a_pw').style.display=$('#a_login').style.display='';showFrame(false)}}
+  else{$('#a_status').textContent='로그인하면 입력 화면이 열립니다';showFrame(false)}}
+$('#a_login').onclick=async()=>{$('#a_status').textContent='로그인 중…';try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('#a_email').value.trim(),password:$('#a_pw').value})});const j=await r.json();if(!r.ok)throw new Error(j.detail||r.statusText);sessionStorage.setItem('m13auth',JSON.stringify({access_token:j.access_token,refresh_token:j.refresh_token,expires_at:j.expires_at,email:j.user.email}));$('#a_pw').value='';adminView()}catch(e){$('#a_status').textContent='로그인 실패: '+e.message}};
+$('#a_logout').onclick=async()=>{const a=authGet();if(a)await fetch('/api/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+a.access_token}}).catch(()=>{});sessionStorage.removeItem('m13auth');adminView()};
+$('#a_pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('#a_login').click()});
+async function run(f){try{await f()}catch(e){console.error(e);const el=document.querySelector('section.view.on');el.insertAdjacentHTML('afterbegin',`<div class="card err">오류: ${e.message}</div>`)}}
+$('#tabs').addEventListener('click',e=>{if(e.target.dataset.v)show(e.target.dataset.v)});
+$('#modelChips').addEventListener('click',e=>{if(e.target.dataset.m===undefined)return;document.querySelectorAll('#modelChips .chip').forEach(c=>c.classList.toggle('on',c===e.target));st.model=e.target.dataset.m;show(st.view)});
+$('#apply').onclick=()=>{st.from=$('#from').value;st.to=$('#to').value;show(st.view)};$('#onlyGaps').onchange=()=>run(chainView);$('#lotgo').onclick=()=>run(()=>trace($('#lotq').value.trim(),st.model));
+$('#lotq').addEventListener('keydown',e=>{if(e.key==='Enter')$('#lotgo').click()});
+// ---- AI 창
+const hist=[];function addMsg(role,text,tools){const d=document.createElement('div');d.className='msg '+(role==='user'?'u':'a');d.textContent=(role==='user'?'나: ':'AI: ')+text;if(tools&&tools.length){const t=document.createElement('div');t.className='tools';t.textContent='도구: '+tools.map(x=>`${x.tool}(${Object.entries(x.input).map(([k,v])=>k+'='+v).join(',')})${x.error?' 오류':''}`).join(' · ');d.appendChild(t)}$('#chatlog').appendChild(d);$('#chatlog').scrollTop=1e9}
+$('#ask').onclick=async()=>{const t=$('#q').value.trim();if(!t)return;$('#q').value='';addMsg('user',t);$('#ask').disabled=true;try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:t,history:hist})});const j=await r.json();if(!r.ok)throw new Error(j.detail||r.statusText);addMsg('assistant',j.answer,j.tool_calls);hist.push({role:'user',content:t},{role:'assistant',content:j.answer})}catch(e){addMsg('assistant','오류: '+e.message)}$('#ask').disabled=false};
+$('#q').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))$('#ask').click()});$('#clearChat').onclick=()=>{hist.length=0;$('#chatlog').innerHTML=''};
+health();show('overview');
+</script>
+</body>
+</html>

@@ -203,6 +203,16 @@ class SupabaseRepository(Repository):
         return {"found": True, "root": root, "model": start[0]["model_code"], "nodes": list(nodes.values()), "edges": edges,
                 "materials": mats, "inspections": insp}
 
+    def fishbone_rows(self) -> list[dict]:
+        """전체흐름 그래프용 행(뷰 m13_fishbone_rows). PostgREST 는 한 번에 1000행까지만 주므로 offset 으로 끝까지 읽는다."""
+        out, page, off = [], 1000, 0
+        while True:
+            rows = self.c.select("m13_fishbone_rows", {"order": "date.asc,id.asc", "offset": str(off)}, limit=page)
+            out.extend(rows)
+            if len(rows) < page:
+                return out
+            off += page
+
     def recent_runs(self, model: str | None, limit: int = 50) -> list[dict]:
         params: dict[str, Any] = {"order": "work_date.desc"}
         if model:

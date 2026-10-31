@@ -35,6 +35,9 @@ class Repository(ABC):
     @abstractmethod
     def recent_runs(self, model: str | None, limit: int = 50) -> list[dict]: ...
 
+    @abstractmethod
+    def fishbone_rows(self) -> list[dict]: ...
+
     # ---- 쓰기 (모두 CANDIDATE 로 들어가고, 사람 확인 시 CONFIRMED)
     @abstractmethod
     def journal_save(self, payload: dict[str, Any]) -> dict: ...
