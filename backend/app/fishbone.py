@@ -96,7 +96,7 @@ def _inspection_row(r: dict) -> dict:
         extra = _QTY_EA.search(raw)
         qty = l.get("qty") if l.get("qty") is not None else ((int(box) * BOX_EA + (int(extra.group(1).replace(",", "")) if extra else 0)) if box is not None else (r.get("value") if single else None))
         mappings.append({"trace_lot_id": l.get("ca_lot"), "lot_code": l.get("marking_code") or raw[:3], "product_lot_date": l.get("lot_date"),
-                         "variant": r["variant"], "normalization_status": l.get("normalization_status") or ("MATCHED" if l.get("ca_lot") else "UNRESOLVED"),
+                         "variant": r["variant"], "normalization_status": "HUMAN_VERIFIED" if l.get("gt_confirmed") else (l.get("normalization_status") or ("MATCHED" if l.get("ca_lot") else "UNRESOLVED")),
                          "raw_lot_context": raw, "quantity_ea_derived": qty, "linkage_status": l.get("status")})
     details = {"inspector_raw": r.get("inspector") or "", "inspection_class_raw": cls, "lot_no_raw": "; ".join(raws),
                "box_size_ea": BOX_EA, "inspection_date": r["date"], "inspection_hours_raw": r.get("hours"), "inspection_type": itype}

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>iMEB3 품질 대시보드</title>
+<title>품질 대시보드 · IV / OV / HSV</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{--bg:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--line:#c3c2b7;--border:rgba(11,11,11,.10);
@@ -31,7 +31,7 @@ button.ghost{background:none;border:1px solid var(--border);color:var(--ink2);bo
 </head>
 <body>
 <header>
-  <h1>iMEB3 품질 대시보드 <span class="muted" style="font-size:12px;font-weight:400">Supabase mqi · M1-3</span></h1>
+  <h1>품질 대시보드 · IV / OV / HSV <span class="muted" style="font-size:12px;font-weight:400">Supabase mqi · M1-3</span></h1>
   <div class="chips" id="modelChips"><span class="chip on" data-m="">전체</span><span class="chip" data-m="IV">IV</span><span class="chip" data-m="OV">OV</span><span class="chip" data-m="HSV">HSV</span></div>
   <input type="date" id="from"> ~ <input type="date" id="to"> <button class="ghost" id="apply">적용</button>
   <span class="badge" id="envBadge">연결 확인 중…</span>

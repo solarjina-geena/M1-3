@@ -53,6 +53,7 @@ lots AS (
            jsonb_agg(jsonb_build_object('raw', il.lot_code_raw, 'box', il.recorded_box_count, 'qty', il.inspected_qty_ea,
                                         'marking_code', CASE WHEN il.remark ~ '^\{' THEN il.remark::jsonb ->> 'marking_code' END,
                                         'normalization_status', CASE WHEN il.remark ~ '^\{' THEN il.remark::jsonb ->> 'normalization_status' END,
+                                        'gt_confirmed', CASE WHEN il.remark ~ '"gt_confirmed": true' THEN true ELSE false END,
                                         'ca_lot', pl.lot_code_raw, 'lot_date', pl.lot_date, 'status', il.lot_linkage_status)) AS items
     FROM mqi.inspection_lot il LEFT JOIN mqi.production_lot pl ON pl.lot_id = il.production_lot_id
     WHERE il.record_state = 'ACTIVE' GROUP BY 1
