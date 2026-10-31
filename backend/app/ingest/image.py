@@ -45,20 +45,22 @@ class Extraction(BaseModel):
     uncertain_notes: list[str] = Field(default_factory=list)
 
 
-def extract_from_image(data: bytes, media_type: str, filename: str) -> dict:
+async def extract_from_image(data: bytes, media_type: str, filename: str) -> dict:
     if not settings.anthropic_key:
         raise RuntimeError("ANTHROPIC_API_KEY 가 backend/.env.personal 에 없습니다.")
-    client = anthropic.Anthropic(api_key=settings.anthropic_key)
     b64 = base64.standard_b64encode(data).decode("utf-8")
     block = ({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}}
              if media_type == "application/pdf" else
              {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}})
-    response = client.messages.parse(
-        model=settings.anthropic_model,
-        max_tokens=16000,
-        messages=[{"role": "user", "content": [block, {"type": "text", "text": PROMPT}]}],
-        output_format=Extraction,
-    )
+    # Async 요청은 브라우저 취소/연결 종료 시 백엔드에서도 취소할 수 있게 한다.
+    # 제한 시간과 재시도 횟수를 고정해 관리 화면이 무기한 대기하지 않게 한다.
+    async with anthropic.AsyncAnthropic(api_key=settings.anthropic_key, timeout=90.0, max_retries=0) as client:
+        response = await client.messages.parse(
+            model=settings.anthropic_model,
+            max_tokens=16000,
+            messages=[{"role": "user", "content": [block, {"type": "text", "text": PROMPT}]}],
+            output_format=Extraction,
+        )
     if response.stop_reason == "refusal":
         raise RuntimeError("모델이 이 요청을 거절했습니다(refusal).")
     ex: Extraction = response.parsed_output

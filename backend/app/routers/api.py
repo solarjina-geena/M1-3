@@ -4,13 +4,15 @@
 중 하나를 Authorization: Bearer 로 보내야 한다. 둘 다 설정돼 있지 않으면 로컬 개방."""
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Optional
 
 import json
 import re
 import uuid
 
-from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+import anthropic
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -218,17 +220,45 @@ async def journal_preview_file(file: UploadFile = File(...)):
     raise HTTPException(400, "xlsx 또는 csv 파일만 받습니다")
 
 
+async def _wait_for_disconnect(request: Request) -> None:
+    while not await request.is_disconnected():
+        await asyncio.sleep(0.25)
+
+
 @router.post("/journal/preview-image")
-async def journal_preview_image(file: UploadFile = File(...)):
+async def journal_preview_image(request: Request, file: UploadFile = File(...)):
     data = await file.read()
     name = (file.filename or "image").lower()
     media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif", "pdf": "application/pdf"}.get(name.rsplit(".", 1)[-1])
     if not media:
         raise HTTPException(400, "jpg/png/webp/gif/pdf 만 받습니다")
+    ocr_task = asyncio.create_task(extract_from_image(data, media, file.filename or "image"))
+    disconnect_task = asyncio.create_task(_wait_for_disconnect(request))
     try:
-        return {"file": file.filename, **extract_from_image(data, media, file.filename or "image")}
+        done, _ = await asyncio.wait({ocr_task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED)
+        if ocr_task in done:
+            disconnect_task.cancel()
+            await asyncio.gather(disconnect_task, return_exceptions=True)
+            return {"file": file.filename, **await ocr_task}
+        ocr_task.cancel()
+        await asyncio.gather(ocr_task, return_exceptions=True)
+        return Response(status_code=499)
+    except anthropic.AuthenticationError as e:
+        raise HTTPException(502, "Anthropic API 키 인증에 실패했습니다.") from e
+    except anthropic.RateLimitError as e:
+        raise HTTPException(429, "Anthropic API 한도 또는 요청 제한에 도달했습니다.") from e
+    except anthropic.APITimeoutError as e:
+        raise HTTPException(504, "OCR 요청이 90초 안에 끝나지 않았습니다. 파일 크기를 줄여 다시 시도해 주세요.") from e
+    except anthropic.APIConnectionError as e:
+        raise HTTPException(502, "Anthropic API에 연결하지 못했습니다.") from e
+    except anthropic.APIStatusError as e:
+        raise HTTPException(502, f"Anthropic API 오류 (HTTP {e.status_code}).") from e
     except RuntimeError as e:
         raise HTTPException(503, str(e)) from e
+    finally:
+        if not disconnect_task.done():
+            disconnect_task.cancel()
+            await asyncio.gather(disconnect_task, return_exceptions=True)
 
 
 class ConfirmIn(BaseModel):
