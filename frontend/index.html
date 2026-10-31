@@ -78,7 +78,7 @@ button.ghost{background:none;border:1px solid var(--border);color:var(--ink2);bo
   <div style="display:flex;gap:8px;margin-top:6px"><button class="primary" id="ask">질문</button><button class="ghost" id="clearChat">지우기</button></div></div></aside>
 </main>
 <script>
-const $=s=>document.querySelector(s), api=async(p)=>{const r=await fetch(p);if(!r.ok){throw new Error((await r.json()).detail||r.statusText)}return r.json()};
+const $=s=>document.querySelector(s), api=async(p,o)=>{const r=await fetch(p,o);if(!r.ok){throw new Error((await r.json()).detail||r.statusText)}return r.json()};
 const COL={IV:getComputedStyle(document.documentElement).getPropertyValue('--iv').trim(),OV:getComputedStyle(document.documentElement).getPropertyValue('--ov').trim(),HSV:getComputedStyle(document.documentElement).getPropertyValue('--hsv').trim()};
 const LABEL={IMEB3_INJECTION:'사출',IMEB3_STITCHING:'스티칭',IMEB3_WINDING:'권선(BA)',IMEB3_CA_PRESS:'압입(CA)',IMEB3_FINAL_INSPECTION:'최종검사'};
 const ORDER=['IMEB3_INJECTION','IMEB3_STITCHING','IMEB3_WINDING','IMEB3_CA_PRESS','IMEB3_FINAL_INSPECTION'];
