@@ -96,3 +96,5 @@ docs/*
 !docs/개인정보_처리방침.md
 !docs/img/
 !docs/img/정답률_*.png
+!docs/img/시스템아키텍처_구성도.png
+!docs/img/시스템아키텍처_구성도.svg

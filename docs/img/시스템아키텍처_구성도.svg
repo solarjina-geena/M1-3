@@ -1,0 +1,167 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1640" height="880" viewBox="0 0 1640 880" font-family="Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="14">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#374151"/>
+    </marker>
+    <marker id="arrowAI" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b45309"/>
+    </marker>
+    <style>
+      .box{stroke-width:1.6;rx:10}
+      .t{font-weight:700;font-size:16px;fill:#111827}
+      .s{font-size:13px;fill:#374151}
+      .m{font-size:12px;fill:#6b7280}
+      .h{font-weight:700;font-size:15px;fill:#4b5563;letter-spacing:1px}
+      .flow{stroke:#374151;stroke-width:2;fill:none;marker-end:url(#arrow)}
+      .ai{stroke:#b45309;stroke-width:1.8;fill:none;stroke-dasharray:7 5;marker-end:url(#arrowAI)}
+      .lbl{font-size:12px;fill:#374151}
+      .lblai{font-size:12px;fill:#b45309}
+    </style>
+  </defs>
+
+  <rect width="1640" height="880" fill="#ffffff"/>
+  <text x="40" y="44" font-size="24" font-weight="700" fill="#111827">시스템 구성도 — 수기 작업일보 AI 판독 → DB 적재 → LOT 추적</text>
+  <text x="40" y="68" class="m">흐름: 스캔 → AI 판독 → 사람 검토·승인 → mqi 적재 → LOT 사슬 후보 연결(CANDIDATE) → 조회 뷰 → 대시보드·AI 대화창   ·   v1.0 2026-10-31</text>
+
+  <!-- column headers -->
+  <text x="40" y="112" class="h">① 현장·원천 자료</text>
+  <text x="370" y="112" class="h">② AI 판독 · 사람 검토</text>
+  <text x="790" y="112" class="h">③ DB (Supabase)</text>
+  <text x="1150" y="112" class="h">④ 백엔드 · 조회 · 대화</text>
+  <line x1="40" y1="120" x2="1600" y2="120" stroke="#e5e7eb"/>
+
+  <!-- Anthropic bar -->
+  <rect x="370" y="136" width="1230" height="54" class="box" fill="#fff7ed" stroke="#f59e0b"/>
+  <text x="390" y="159" class="t" fill="#92400e">Anthropic Claude API  (claude-opus-5-5)</text>
+  <text x="390" y="179" class="s">멀티모달 판독(이미지·PDF → 작업일보 항목 JSON) · 대화 에이전트(tool use) · 키는 서버 환경변수에만 · 판독 결과는 서버가 이름을 가린 뒤 저장</text>
+
+  <!-- ① field -->
+  <rect x="40" y="220" width="290" height="120" class="box" fill="#f9fafb" stroke="#9ca3af"/>
+  <text x="56" y="246" class="t">종이 작업일보 (손글씨)</text>
+  <text x="56" y="268" class="s">사출(BB) · 스티칭(BS) · 권선(BA) · 압입(CA)</text>
+  <text x="56" y="288" class="s">· 최종검사 — 수량·불량·자재 LOT 날짜</text>
+  <text x="56" y="318" class="m">→ 스캔 사진 / PDF 로 업로드</text>
+
+  <rect x="40" y="590" width="290" height="80" class="box" fill="#f9fafb" stroke="#9ca3af"/>
+  <text x="56" y="616" class="t">엑셀 전사본 · Firestore 판독본</text>
+  <text x="56" y="638" class="s">8월 사출·조립 xls, M1-2 판독 720문서</text>
+  <text x="56" y="658" class="m">원본·전사본은 저장소 밖(로컬·팀 폴더)</text>
+
+  <rect x="40" y="690" width="290" height="60" class="box" fill="#f9fafb" stroke="#9ca3af"/>
+  <text x="56" y="716" class="t">정답지 엑셀 (박*경)</text>
+  <text x="56" y="738" class="s">사출·조립·최종검사 8·9월</text>
+
+  <!-- ② AI reading / review -->
+  <rect x="370" y="220" width="370" height="120" class="box" fill="#eff6ff" stroke="#3b82f6"/>
+  <text x="386" y="246" class="t">팀 OCR 검토·적재 앱  (팀원 기여)</text>
+  <text x="386" y="268" class="s">Streamlit · Render · Supabase Auth</text>
+  <text x="386" y="288" class="s">Claude 비전 판독 → 셀 단위 검토 → 승인 → 적재</text>
+  <text x="386" y="318" class="m">m3-1-rawdata-demo.onrender.com</text>
+
+  <rect x="370" y="370" width="370" height="140" class="box" fill="#eff6ff" stroke="#3b82f6"/>
+  <text x="386" y="396" class="t">관리자 입력 🔒  frontend/manage.html</text>
+  <text x="386" y="418" class="s">직접 입력 · 엑셀/CSV 업로드 · 사진/PDF AI 판독</text>
+  <text x="386" y="438" class="s">"AI 판독값 — 사람 확인 전" 미리보기 → 승인 저장</text>
+  <text x="386" y="458" class="s">LOT 연결 확인 (CANDIDATE → CONFIRMED)</text>
+  <text x="386" y="488" class="m">팀원 이메일 로그인(허용 목록) · 관리자 탭 안에 팀 앱 iframe</text>
+
+  <!-- ③ DB -->
+  <rect x="790" y="220" width="310" height="290" class="box" fill="#ecfdf5" stroke="#10b981"/>
+  <text x="806" y="246" class="t">Supabase  (PostgreSQL)</text>
+  <rect x="806" y="262" width="278" height="78" rx="8" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="818" y="284" class="t" font-size="15px">mqi 스키마 — 50 테이블</text>
+  <text x="818" y="304" class="s">팀 설계 그대로(수정 없음)</text>
+  <text x="818" y="322" class="s">production_run · process_run · lot_link …</text>
+  <rect x="806" y="350" width="278" height="60" rx="8" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="818" y="372" class="t" font-size="15px">조회 뷰  public.m13_*</text>
+  <text x="818" y="392" class="s">fishbone_rows · lot_chain_gaps · lot_flow · accuracy</text>
+  <rect x="806" y="420" width="278" height="40" rx="8" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="818" y="446" class="s"><tspan font-weight="700" fill="#111827">RPC</tspan>  m13_journal_save · m13_link_confirm</text>
+  <rect x="806" y="470" width="278" height="30" rx="8" fill="#ffffff" stroke="#a7f3d0"/>
+  <text x="818" y="491" class="s"><tspan font-weight="700" fill="#111827">Auth (GoTrue)</tspan>  팀원 이메일 로그인</text>
+
+  <!-- ④ backend -->
+  <rect x="1150" y="220" width="400" height="120" class="box" fill="#f5f3ff" stroke="#8b5cf6"/>
+  <text x="1166" y="246" class="t">FastAPI 백엔드  backend/app  (Render)</text>
+  <text x="1166" y="268" class="s">/api/summary · /api/data · /api/lots/chain</text>
+  <text x="1166" y="288" class="s">/api/journal/* · /api/chat · 토큰 검증 · 이름 가림</text>
+  <text x="1166" y="318" class="m">m1-3-imeb3-dashboard.onrender.com · DB 는 환경변수로 선택</text>
+
+  <rect x="1150" y="370" width="215" height="140" class="box" fill="#f5f3ff" stroke="#8b5cf6"/>
+  <text x="1166" y="396" class="t">전체흐름 대시보드</text>
+  <text x="1166" y="418" class="s">frontend/index.html</text>
+  <text x="1166" y="438" class="s">공정 피시본 그래프</text>
+  <text x="1166" y="458" class="s">LOT 사슬 · 자재 가지 · GAP</text>
+  <text x="1166" y="488" class="m">로그인 없이 조회 · tables.html</text>
+
+  <rect x="1385" y="370" width="215" height="140" class="box" fill="#f5f3ff" stroke="#8b5cf6"/>
+  <text x="1401" y="396" class="t">AI 대화창</text>
+  <text x="1401" y="418" class="s">Claude 에이전트 (tool use)</text>
+  <text x="1401" y="438" class="s">DB 조회 도구 5종 → 답변</text>
+  <text x="1401" y="458" class="s">숫자는 DB 결과만</text>
+  <text x="1401" y="488" class="m">"AI 생성" 표시 · get_lot_history …</text>
+
+  <!-- batch tools -->
+  <rect x="370" y="590" width="370" height="80" class="box" fill="#f9fafb" stroke="#9ca3af"/>
+  <text x="386" y="616" class="t">변환 도구  tools/</text>
+  <text x="386" y="638" class="s">*_xls_to_docs.py → firestore_to_mqi.py</text>
+  <text x="386" y="658" class="m">LOT 사슬 규칙 적용 → SQL 차이분(delta) → mqi 적재</text>
+
+  <rect x="370" y="690" width="370" height="60" class="box" fill="#f9fafb" stroke="#9ca3af"/>
+  <text x="386" y="716" class="t">정답률 측정  tools/accuracy/</text>
+  <text x="386" y="738" class="s">gt_cells → evaluate(확인 전) → confirm(확인 후) → charts</text>
+
+  <rect x="1150" y="690" width="450" height="60" class="box" fill="#fdf2f8" stroke="#ec4899"/>
+  <text x="1166" y="716" class="t">정답률 결과 → 과제보고서 · 발표 자료</text>
+  <text x="1166" y="738" class="s">핵심 지표 확인 전 59.7% → 확인 후 62.3% · 공정·항목별 그래프</text>
+
+  <!-- flows ① → ② -->
+  <path d="M330,262 L370,262" class="flow"/>
+  <text x="331" y="254" class="lbl">사진·PDF</text>
+  <path d="M330,300 C352,300 348,440 370,440" class="flow"/>
+
+  <!-- AI calls (dashed) -->
+  <path d="M555,220 L555,190" class="ai"/>
+  <text x="563" y="212" class="lblai">비전 판독</text>
+  <path d="M740,400 C770,400 770,210 765,190" class="ai"/>
+  <text x="746" y="382" class="lblai">사진 판독</text>
+  <path d="M1575,370 L1575,190" class="ai"/>
+  <text x="1520" y="354" class="lblai">도구 호출 → 답변</text>
+
+  <!-- ② → ③ -->
+  <path d="M740,290 L790,290" class="flow"/>
+  <text x="742" y="282" class="lbl">승인→적재</text>
+  <path d="M740,470 L790,470" class="flow"/>
+  <text x="746" y="462" class="lbl">RPC 저장</text>
+
+  <!-- ③ ↔ ④ -->
+  <path d="M1100,282 L1150,282" class="flow"/>
+  <text x="1108" y="274" class="lbl">뷰 조회</text>
+  <path d="M1150,304 L1100,304" class="flow"/>
+  <text x="1104" y="320" class="lbl">RPC 쓰기</text>
+
+  <!-- backend → screens -->
+  <path d="M1257,340 L1257,370" class="flow"/>
+  <text x="1265" y="360" class="lbl">/api/data</text>
+  <path d="M1470,340 L1470,370" class="flow"/>
+  <text x="1478" y="360" class="lbl">/api/chat</text>
+
+  <!-- batch flows -->
+  <path d="M330,630 L370,630" class="flow"/>
+  <path d="M740,630 C800,630 820,560 870,510" class="flow"/>
+  <text x="790" y="600" class="lbl">SQL 차이분 적용</text>
+  <path d="M330,720 L370,720" class="flow"/>
+  <path d="M1010,510 C1010,600 800,640 745,700" class="flow"/>
+  <text x="900" y="648" class="lbl">뷰 m13_accuracy_cells 비교</text>
+  <path d="M740,720 L1150,720" class="flow"/>
+  <text x="880" y="712" class="lbl">결과 md · 그래프 png</text>
+
+  <!-- legend -->
+  <line x1="40" y1="800" x2="90" y2="800" class="flow"/>
+  <text x="98" y="805" class="lbl">데이터 흐름</text>
+  <line x1="200" y1="800" x2="250" y2="800" class="ai"/>
+  <text x="258" y="805" class="lblai">Claude API 호출</text>
+  <text x="390" y="805" class="lbl">🔒 로그인 필요(팀원 이메일 허용 목록)</text>
+  <text x="670" y="805" class="lbl">자동 LOT 연결은 CANDIDATE → 사람 확인 후 CONFIRMED, 삭제 대신 VOID</text>
+  <text x="40" y="840" class="m">배포: 대시보드+백엔드 Render(Blueprint render.yaml) · 팀 OCR 앱 Render · DB Supabase(개인 IMEB3 → 팀 mqi-m3-1-dev 는 URL·키 교체로 전환) · 작업자 실명은 저장하지 않음(가린 표시명)</text>
+</svg>
