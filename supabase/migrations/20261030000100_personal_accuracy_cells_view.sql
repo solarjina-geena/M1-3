@@ -27,9 +27,12 @@ FROM run r JOIN mqi.process_run_result prr ON prr.process_run_id = r.process_run
 WHERE prr.work_minutes IS NOT NULL
 UNION ALL
 -- 2) 공정 불량 (유형별)
+-- 불량: 사람이 고친 행은 AI 판독 원값(corrected_from), 사람이 보완 입력한 행(ds HUMAN_VERIFIED_*)은 제외, 헛판독으로 무효(VOID)된 행은 AI 판독으로 계속 포함
 SELECT 'defect', r.work_date, r.model_code, r.process_code, r.shift, qf.raw_defect_name,
-       qf.quantity::numeric, qf.raw_quantity_text, r.vs, r.source_doc, qf.quality_finding_id
-FROM run r JOIN mqi.quality_finding qf ON qf.process_run_id = r.process_run_id AND qf.record_state = 'ACTIVE'
+       CASE WHEN qf.remark ~ '"corrected_by"' THEN NULLIF(qf.remark::jsonb ->> 'corrected_from', '')::numeric ELSE qf.quantity::numeric END,
+       qf.raw_quantity_text, r.vs, r.source_doc, qf.quality_finding_id
+FROM run r JOIN mqi.quality_finding qf ON qf.process_run_id = r.process_run_id
+WHERE (qf.record_state = 'ACTIVE' OR qf.remark ~ '"voided_by"') AND qf.remark !~ 'HUMAN_VERIFIED_2026'
 UNION ALL
 -- 3) 자재·부품 LOT 원문 (수지·보빈·리드핀·인서트·와이어·케이스). 값은 원문 날짜 표기
 SELECT 'material', r.work_date, r.model_code, r.process_code, r.shift, m.material_code,
