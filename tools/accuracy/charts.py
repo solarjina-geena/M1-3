@@ -57,7 +57,7 @@ def main():
     a1.set_yticks(list(y)); a1.set_yticklabels([f"{l}  ({d}칸)" for l, d in zip(labels, dens)])
     a1.set_title("핵심 지표 정답률 — 공정별 (생산수량·불량수량)", loc="left", fontsize=11, color=INK, pad=10)
     a1.set_xlabel("정답률 (%)"); style(a1, 108)
-    a1.legend(loc="upper right", frameon=False, fontsize=9)
+    a1.legend(loc="upper left", bbox_to_anchor=(0, -0.14), ncol=2, frameon=False, fontsize=9)
     a1.axhline(0.5, color=GRID, linewidth=1)
 
     items, vals, dens2 = [], [], []
@@ -71,7 +71,7 @@ def main():
     a2.set_xlabel("정답률 (%)"); style(a2, 108)
     fig.text(0.01, 0.01, "정답률 = 일치 ÷ (일치+불일치+누락+헛판독). 전사본 적재값·빈칸·판독본 없는 일보 제외. 개인 Supabase 적재값 vs 정답지 엑셀(8·9월), 2026-10-31",
              fontsize=8, color=INK2)
-    fig.tight_layout(rect=(0, 0.04, 1, 1)); fig.savefig(OUT / "정답률_1_공정항목.png", dpi=160); plt.close(fig)
+    fig.tight_layout(rect=(0, 0.06, 1, 1)); fig.savefig(OUT / "정답률_1_공정항목.png", dpi=160); plt.close(fig)
 
     # ---- 그림 2: 틀린 칸 분류 + 판독 오류 유형
     fig, (b1, b2) = plt.subplots(1, 2, figsize=(11, 3.9), gridspec_kw={"width_ratios": [1, 1.1]})
