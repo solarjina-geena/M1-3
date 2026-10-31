@@ -81,11 +81,18 @@ def parse_rows(rows: Iterable[dict], filename: str, method: str) -> list[dict]:
 
 
 def parse_excel(data: bytes, filename: str) -> list[dict]:
+    """템플릿(머리글 한 줄)이면 행 단위로, 회사 작업일보 양식 그대로인 xlsx 면 form_workbook 으로 읽는다."""
+    import openpyxl.reader.excel as ex
+    ex.ExcelReader.read_custom = lambda self: None   # 일부 xlsx 의 문서 속성 오류 우회
     wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     ws = wb.worksheets[0]
-    rows = list(ws.iter_rows(values_only=True))
+    rows = list(ws.iter_rows(values_only=True, max_row=2))
     if not rows:
         return []
+    from .form_workbook import looks_like_form, parse_form_workbook
+    if looks_like_form(list(rows[0])):
+        return parse_form_workbook(data, filename)
+    rows = list(ws.iter_rows(values_only=True))
     header = [str(h).strip().lower() if h is not None else "" for h in rows[0]]
     return parse_rows((dict(zip(header, r)) for r in rows[1:]), filename, "EXCEL")
 
