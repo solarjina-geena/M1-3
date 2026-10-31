@@ -16,7 +16,8 @@ WITH run AS (
 res AS (
     SELECT process_run_id, sum(gross_output_qty)::bigint AS qty, max(work_minutes) AS minutes,
            max(CASE WHEN remark ~ '^\{' THEN remark::jsonb ->> 'operator' END) AS operator,
-           max(raw_quantity_text) AS raw_quantity_text
+           max(raw_quantity_text) AS raw_quantity_text,
+           max(CASE WHEN remark ~ '^\{' THEN remark::jsonb ->> 'vs' END) AS vs_result   -- 사람이 고친 값이면 HUMAN_VERIFIED
     FROM mqi.process_run_result WHERE record_state = 'ACTIVE' GROUP BY 1
 ),
 outl AS (
@@ -59,7 +60,7 @@ lots AS (
 SELECT 'production'::text AS kind, COALESCE(r.rm ->> 'fs', r.process_run_id::text) AS id, r.run_id::text AS run_id,
        r.process_code, r.model_code AS variant, r.work_date AS date, r.shift, r.work_type,
        res.qty AS value, res.minutes, res.operator, res.raw_quantity_text,
-       r.rm ->> 'vs' AS value_source, r.rm ->> 'file' AS file, r.rm ->> 'page' AS page,
+       COALESCE(res.vs_result, r.rm ->> 'vs') AS value_source, r.rm ->> 'file' AS file, r.rm ->> 'page' AS page,
        outl.lot_code AS out_lot, mats.items AS materials, inl.items AS inputs,
        CASE WHEN r.process_code = 'IMEB3_CA_PRESS' THEN mark.marking_code END AS inspector,
        NULL::integer AS round, NULL::text AS insp_type, NULL::jsonb AS lots, NULL::text AS hours

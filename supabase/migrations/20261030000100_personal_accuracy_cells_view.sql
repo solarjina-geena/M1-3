@@ -2,9 +2,7 @@
 -- OCR 정답률 측정용 "칸" 뷰: DB 에 들어간 값을 정답지(회사 전산 엑셀)와 같은 맞춤 키(날짜·모델·공정·주야·항목)로 펼친다.
 -- 팀 기준서(정답률_기준.md v1.0): 칸 = 1문항, 키 = 날짜+모델+공정+항목+주야(+위치). vs = 값 출처(SOURCE_READ 등 PDF 판독 / EXCEL_TRANSCRIBED 전사본).
 
-DROP VIEW IF EXISTS public.m13_accuracy_cells;
-
-CREATE VIEW public.m13_accuracy_cells AS
+CREATE OR REPLACE VIEW public.m13_accuracy_cells AS
 WITH run AS (
     SELECT pr.process_run_id, pr.work_date, pm.model_code, pc.process_code, pru.shift,
            CASE WHEN pr.remark ~ '^\{' THEN pr.remark::jsonb ->> 'vs' END AS vs,
@@ -17,7 +15,10 @@ WITH run AS (
 )
 -- 1) 생산량 / 작업시간
 SELECT 'production_qty' AS item, r.work_date, r.model_code, r.process_code, r.shift, NULL::text AS sub,
-       prr.gross_output_qty::numeric AS value_num, prr.raw_quantity_text AS value_text, r.vs, r.source_doc, r.process_run_id AS ref_id
+       -- 사람이 원본 대조로 고친 행(remark corrected_by)은 AI 판독값(corrected_from 원문)을 그대로 비교한다. 정답률은 AI 판독 기준이기 때문
+       CASE WHEN prr.remark ~ '"corrected_by"' THEN NULL::numeric ELSE prr.gross_output_qty::numeric END AS value_num,
+       CASE WHEN prr.remark ~ '"corrected_by"' THEN prr.remark::jsonb ->> 'corrected_from' ELSE prr.raw_quantity_text END AS value_text,
+       r.vs, r.source_doc, r.process_run_id AS ref_id
 FROM run r JOIN mqi.process_run_result prr ON prr.process_run_id = r.process_run_id AND prr.record_state = 'ACTIVE'
 UNION ALL
 SELECT 'work_hours', r.work_date, r.model_code, r.process_code, r.shift, NULL,
