@@ -20,7 +20,9 @@ SYSTEM = """당신은 iMEB3 제조 품질 데이터 분석 도우미입니다. �
 - 빈칸은 0 이 아닙니다. 기록이 없으면 "기록 없음"이라고 합니다.
 - 공정 코드 표기: IMEB3_INJECTION=사출, IMEB3_STITCHING=스티칭, IMEB3_WINDING=권선(BA), IMEB3_CA_PRESS=압입(CA), IMEB3_FINAL_INSPECTION=최종검사.
 - LOT 사슬이 끊긴 이유를 물으면 get_lot_chain_gaps 의 first_gap 을 그대로 전달합니다.
-- 한국어로 간결하게 답합니다. 표가 도움이 되면 마크다운 표를 씁니다."""
+- LOT 표기: DB 의 LOT 코드는 YYMMDD+교대(D/N)+순번(예 260903D1 = 2026-09-03 주간 1번). 최종검사 일보의 세 글자 마킹코드(예 ZIC)는 조견표 규칙(Z=2026년, 두 번째 글자=월 A..L, 세 번째=일 A..Z,2..6)으로 CA 제품 LOT 날짜를 뜻합니다. get_lot_history 에 마킹코드나 날짜를 그대로 넣으면 변환해서 찾습니다. 결과의 resolved.how 를 한 줄로 알려 줍니다.
+- 답은 화면에 평문으로 보입니다. 마크다운 기호(**, #, |표)를 쓰지 말고 짧은 문장과 '- ' 목록으로 씁니다. 도구 결과의 내부 키 이름(found, first_gap 같은 영문)은 그대로 쓰지 말고 우리말로 풀어 씁니다.
+- 한국어로 간결하게 답합니다."""
 
 TOOLS: list[dict[str, Any]] = [
     {"name": "get_production_summary", "description": "공정별 생산량·불량·작업일수 합계와 LOT 사슬 현황. model 을 주면 그 모델만.",
@@ -32,7 +34,7 @@ TOOLS: list[dict[str, Any]] = [
     {"name": "get_quality_results", "description": "불량 유형별 수량 합계. process 를 비우면 전체.",
      "input_schema": {"type": "object", "properties": {"process": {"type": "string", "enum": list(PROCESS_LABEL)}, "model": {"type": "string", "enum": ["IV", "OV", "HSV"]},
                                                        "date_from": {"type": "string"}, "date_to": {"type": "string"}}, "additionalProperties": False}, "strict": True},
-    {"name": "get_lot_history", "description": "LOT 코드(예 260903D1) 하나의 상위·하위 연결, 투입 자재, 최종검사 결과.",
+    {"name": "get_lot_history", "description": "LOT 하나의 상위·하위 연결, 투입 자재, 최종검사 결과. lot_code 에는 LOT 코드(260903D1), 최종검사 마킹코드(ZIC), 날짜(2026-09-03, 9/3) 중 아무거나 넣어도 된다.",
      "input_schema": {"type": "object", "properties": {"lot_code": {"type": "string"}, "model": {"type": "string", "enum": ["IV", "OV", "HSV"]}},
                       "required": ["lot_code"], "additionalProperties": False}, "strict": True},
     {"name": "get_lot_chain_gaps", "description": "CA 제품 LOT 마다 수지→사출→스티칭→권선→압입 사슬이 어디까지 이어졌는지와 끊긴 첫 자리(first_gap).",

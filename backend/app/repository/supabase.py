@@ -1,6 +1,8 @@
 """Supabase(mqi) 구현. 읽기는 public.m13_* 뷰와 mqi 테이블, 쓰기는 m13_* RPC."""
 from __future__ import annotations
 
+import re
+
 from collections import defaultdict
 from typing import Any
 
@@ -146,13 +148,34 @@ class SupabaseRepository(Repository):
             params["model_code"] = f"eq.{model}"
         return self.c.select("m13_lot_chain", params, limit=100000)
 
+    def resolve_lot_code(self, code: str) -> dict:
+        """사람이 쓰는 LOT 표기를 DB 의 LOT 코드(YYMMDD+교대+순번)로. 최종검사 마킹코드(ZIC) 는 조견표 매핑(lot_code_mapping)으로 CA LOT 날짜를 찾는다."""
+        c = (code or "").strip().upper()
+        if re.fullmatch(r"\d{6}[DN]\d", c):
+            return {"lot_code": c, "how": "LOT 코드 그대로"}
+        if re.fullmatch(r"[A-Z][A-Z0-9]{2}", c):
+            rows = self.c.select("lot_code_mapping", {"marking_code": f"eq.{c}", "record_state": "eq.ACTIVE", "select": "lot_date,validation_status"}, schema=settings.schema, limit=5)
+            if rows:
+                d = rows[0]["lot_date"]
+                return {"lot_code": f"{d[2:4]}{d[5:7]}{d[8:10]}D1", "how": f"최종검사 마킹코드 {c} → 조견표 매핑 CA 제품 LOT 날짜 {d} ({rows[0]['validation_status']})", "marking_code": c, "lot_date": d}
+            return {"lot_code": c, "how": f"마킹코드 {c} 의 조견표 매핑 없음"}
+        m = re.fullmatch(r"(?:20)?(\d{2})[-./](\d{1,2})[-./](\d{1,2})", c)
+        if m:
+            return {"lot_code": f"{m.group(1)}{int(m.group(2)):02d}{int(m.group(3)):02d}D1", "how": "날짜 표기 → 주간 1번 LOT 코드"}
+        m = re.fullmatch(r"(\d{1,2})\s*[/.월]\s*(\d{1,2})\s*일?", c)
+        if m:
+            return {"lot_code": f"26{int(m.group(1)):02d}{int(m.group(2)):02d}D1", "how": "월/일 표기 → 2026년 주간 1번 LOT 코드"}
+        return {"lot_code": c, "how": "형식 미상"}
+
     def lot_trace(self, lot_code: str, model: str | None) -> dict:
+        resolved = self.resolve_lot_code(lot_code)
+        lot_code = resolved["lot_code"]
         params: dict[str, Any] = {"lot_code": f"eq.{lot_code}"}
         if model:
             params["model_code"] = f"eq.{model}"
         start = self.c.select("m13_lot_chain", params, limit=1000)
         if not start:
-            return {"found": False, "lot_code": lot_code, "model": model}
+            return {"found": False, "lot_code": lot_code, "model": model, "resolved": resolved}
         all_rows = self.chain_rows(start[0]["model_code"])
         by_lot: dict[str, list] = defaultdict(list)
         children: dict[str, list] = defaultdict(list)
@@ -200,7 +223,7 @@ class SupabaseRepository(Repository):
         codes = {n["lot_code"] for n in nodes.values()}
         mats = [m for m in self.c.select("m13_lot_materials", {"model_code": f"eq.{start[0]['model_code']}"}, limit=100000) if m["lot_code"] in codes]
         insp = [i for i in self.c.select("m13_lot_inspections", {"model_code": f"eq.{start[0]['model_code']}"}, limit=100000) if i["lot_code"] in codes]
-        return {"found": True, "root": root, "model": start[0]["model_code"], "nodes": list(nodes.values()), "edges": edges,
+        return {"found": True, "root": root, "model": start[0]["model_code"], "resolved": resolved, "nodes": list(nodes.values()), "edges": edges,
                 "materials": mats, "inspections": insp}
 
     def fishbone_rows(self) -> list[dict]:
