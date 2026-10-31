@@ -94,6 +94,9 @@ docs/*
 !docs/기능요구명세서.md
 !docs/시스템아키텍처.md
 !docs/개인정보_처리방침.md
+!docs/사용자테스트/
+docs/사용자테스트/*
+!docs/사용자테스트/테스터_안내문.md
 !docs/img/
 !docs/img/정답률_*.png
 !docs/img/시스템아키텍처_구성도.png
