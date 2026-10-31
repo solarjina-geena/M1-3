@@ -90,3 +90,5 @@ outputs/
 # 작업 기록(실제 제조 기록 포함)은 로컬 전용. 공개 저장소에는 과제보고서만
 docs/*
 !docs/M3-1_과제보고서.md
+!docs/img/
+!docs/img/정답률_*.png
