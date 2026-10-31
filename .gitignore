@@ -93,5 +93,6 @@ docs/*
 !docs/기획서.md
 !docs/기능요구명세서.md
 !docs/시스템아키텍처.md
+!docs/개인정보_처리방침.md
 !docs/img/
 !docs/img/정답률_*.png
