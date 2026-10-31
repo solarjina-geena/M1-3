@@ -34,6 +34,7 @@ PROMPT = """이 이미지는 iMEB3 제조 작업일보(사출·스티칭·조립
 규칙:
 - 숫자는 적힌 그대로 읽습니다. 읽을 수 없거나 불확실하면 그 항목은 비우고 raw 에 보이는 대로 적습니다. 추측해서 채우지 않습니다. 합산·조정하지 않습니다.
 - 날짜 표기('8.28', '7/22', '26.9.4')는 raw 에 원문 그대로 두고 lot_date 는 비워도 됩니다(서버가 정규화).
+- work_date 는 반드시 YYYY-MM-DD 형식으로 적습니다(연도가 없으면 요일·문맥으로 추정). 글자가 흐려 불확실하면 가장 그럴듯한 날짜를 적고 그 사정은 uncertain_notes 에 씁니다. work_date 에 'UNCERTAIN' 같은 글자를 넣지 않습니다.
 - 모델이 IV/OV/HSV 중 어느 것인지 확실하지 않으면 그 항목을 만들지 말고 uncertain_notes 에 이유를 적습니다. OV/HSV 합산 양식이면 합산 수량을 나누지 않습니다.
 - 작업자 이름은 적지 않습니다. 검사자 이름만 inspector_raw 에 적습니다(가려서 저장).
 - 페이지에 있는데 위 항목에 없는 정보는 source.note 에 짧게 남깁니다.
@@ -80,7 +81,7 @@ async def extract_from_image(data: bytes, media_type: str, filename: str) -> dic
             model=settings.anthropic_model,
             max_tokens=16000,
             system=SYSTEM,
-            messages=[{"role": "user", "content": [block, {"type": "text", "text": PROMPT}]}],
+            messages=[{"role": "user", "content": [block, {"type": "text", "text": PROMPT + f"\n\n파일 이름: {filename} (이름에 날짜가 있으면 작업일·연도 추정에 참고하세요. 양식에는 연도가 없는 경우가 많습니다.)"}]}],
         )
     if response.stop_reason == "refusal":
         raise RuntimeError("모델이 이 요청을 거절했습니다(refusal).")
@@ -88,13 +89,26 @@ async def extract_from_image(data: bytes, media_type: str, filename: str) -> dic
         raise RuntimeError("모델 응답이 길이 제한에 걸려 잘렸습니다. 한 장씩 올려 주세요.")
     text = "".join(b.text for b in response.content if b.type == "text")
     try:
-        ex = Extraction.model_validate_json(_json_text(text))
-    except ValidationError as e:
-        raise RuntimeError(f"모델 응답이 작업일보 스키마와 맞지 않습니다: {e.errors()[0].get('msg')} ({e.errors()[0].get('loc')})") from e
+        raw = json.loads(_json_text(text))
+    except ValueError as e:
+        raise RuntimeError(f"모델 응답을 JSON 으로 읽을 수 없습니다: {e}") from e
+    if not isinstance(raw, dict):
+        raise RuntimeError("모델 응답이 JSON 객체가 아닙니다.")
+    doc_type = raw.get("document_type") if raw.get("document_type") in ("INJECTION", "STITCHING", "ASSEMBLY", "FINAL_INSPECTION") else "UNKNOWN"
+    notes = [str(n) for n in raw.get("uncertain_notes") or []]
+    # 작업일보 항목은 한 건씩 검증한다. 한 항목의 날짜 표기 오류가 나머지 항목까지 버리지 않게 하고,
+    # 실패한 항목은 엑셀 업로드와 같은 모양(ok=False, error, raw)으로 화면에 보여 준다.
     items = []
-    for j in ex.journals:
-        j.source.method = "IMAGE"
-        j.source.file = j.source.file or filename
-        items.append({"ok": True, "payload": j.model_dump(), "normalized": j.normalized()})
-    return {"document_type": ex.document_type, "items": items, "uncertain_notes": ex.uncertain_notes,
+    for k, jraw in enumerate(raw.get("journals") or []):
+        try:
+            j = JournalPayload.model_validate(jraw)
+            j.source.method = "IMAGE"
+            j.source.file = j.source.file or filename
+            items.append({"ok": True, "payload": j.model_dump(), "normalized": j.normalized()})
+        except ValidationError as e:
+            first = e.errors()[0]
+            loc = ".".join(str(x) for x in first.get("loc", ()))
+            items.append({"ok": False, "row": k + 1, "error": f"{first.get('msg')} (항목 {loc})",
+                          "raw": jraw if isinstance(jraw, dict) else {"value": str(jraw)}})
+    return {"document_type": doc_type, "items": items, "uncertain_notes": notes,
             "usage": {"input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens}}
