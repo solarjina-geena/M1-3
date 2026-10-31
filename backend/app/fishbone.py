@@ -71,8 +71,13 @@ def _production_row(r: dict) -> dict:
             _add(details, "bobbin_lot_raw", raw)
         elif "lead_pin" in field.lower():
             _add(details, "lead_pin_lot_raw", raw)
+    value = r.get("value")
+    if value is None:
+        # 수량을 숫자로 못 읽은 기록(예 '1520?')은 기록 자체는 있으므로 원문 글자를 그대로 보낸다. 화면은 '판독 확인' 으로 표시한다
+        raw = str(r.get("raw_quantity_text") or "").strip()
+        value = raw or ("판독 불명" if str(r.get("value_source") or "").startswith("UNCERTAIN") else "수량 미기재")
     return {"id": r["id"], "run_id": r.get("run_id"), "process": process, "variant": r["variant"], "date": r["date"],
-            "metric": "PRODUCTION_QTY", "value": r.get("value"), "unit": "EA", "value_source": _source_status(r.get("value_source")),
+            "metric": "PRODUCTION_QTY", "value": value, "unit": "EA", "value_source": _source_status(r.get("value_source")),
             "product": "iMEB3", "source": {"file": r.get("file"), "page": r.get("page")}, "details": details,
             "lot_id": r.get("out_lot"), "work_minutes": r.get("minutes"), "raw_value": r.get("raw_quantity_text")}
 
