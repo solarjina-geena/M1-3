@@ -54,6 +54,8 @@ def _production_row(r: dict) -> dict:
     process = PROCESS.get(r["process_code"], r["process_code"])
     details: dict[str, Any] = {"shift": r.get("shift") or "D", "operator": r.get("operator") or "",
                                "production_lot_id": r.get("out_lot"), "work_type": r.get("work_type")}
+    if process == "CA" and r.get("inspector"):
+        details["product_lot_code"] = r["inspector"]        # 뷰가 CA 행의 inspector 칸에 최종검사 마킹코드(조견표)를 실어 보낸다
     for m in r.get("materials") or []:
         key = MATERIAL_KEY.get(m.get("material"))
         if key:
@@ -80,12 +82,14 @@ def _inspection_row(r: dict) -> dict:
     itype = r.get("insp_type") or "FINAL"
     cls = "재검" if itype == "REINSPECTION" else "1차검사" if rnd == 1 else "2차검사" if rnd == 2 else ""
     mappings, raws = [], []
-    for l in r.get("lots") or []:
+    lots = r.get("lots") or []
+    single = len(lots) == 1 and r.get("value") is not None   # 검사 실행에 LOT 이 하나면 실행 검사수량 = 그 LOT 검사수량
+    for l in lots:
         raw = str(l.get("raw") or "")
         raws.append(raw)
         box = l.get("box")
         extra = _QTY_EA.search(raw)
-        qty = l.get("qty") if l.get("qty") is not None else ((int(box) * BOX_EA + (int(extra.group(1).replace(",", "")) if extra else 0)) if box is not None else None)
+        qty = l.get("qty") if l.get("qty") is not None else ((int(box) * BOX_EA + (int(extra.group(1).replace(",", "")) if extra else 0)) if box is not None else (r.get("value") if single else None))
         mappings.append({"trace_lot_id": l.get("ca_lot"), "lot_code": l.get("marking_code") or raw[:3], "product_lot_date": l.get("lot_date"),
                          "variant": r["variant"], "normalization_status": l.get("normalization_status") or ("MATCHED" if l.get("ca_lot") else "UNRESOLVED"),
                          "raw_lot_context": raw, "quantity_ea_derived": qty, "linkage_status": l.get("status")})

@@ -20,9 +20,12 @@ res AS (
     FROM mqi.process_run_result WHERE record_state = 'ACTIVE' GROUP BY 1
 ),
 outl AS (
-    SELECT prl.process_run_id, min(pl.lot_code_raw) AS lot_code
+    SELECT prl.process_run_id, min(pl.lot_code_raw) AS lot_code, min(pl.lot_date) AS lot_date
     FROM mqi.process_run_lot prl JOIN mqi.production_lot pl ON pl.lot_id = prl.production_lot_id
     WHERE prl.lot_role = 'OUTPUT' AND prl.record_state = 'ACTIVE' GROUP BY 1
+),
+mark AS (   -- CA 제품 LOT 날짜 → 최종검사 마킹코드(조견표). CA 행의 inspector 칸에 실어 보낸다
+    SELECT lot_date, min(marking_code) AS marking_code FROM mqi.lot_code_mapping WHERE record_state = 'ACTIVE' GROUP BY 1
 ),
 inl AS (
     SELECT prl.process_run_id,
@@ -58,10 +61,12 @@ SELECT 'production'::text AS kind, COALESCE(r.rm ->> 'fs', r.process_run_id::tex
        res.qty AS value, res.minutes, res.operator, res.raw_quantity_text,
        r.rm ->> 'vs' AS value_source, r.rm ->> 'file' AS file, r.rm ->> 'page' AS page,
        outl.lot_code AS out_lot, mats.items AS materials, inl.items AS inputs,
-       NULL::text AS inspector, NULL::integer AS round, NULL::text AS insp_type, NULL::jsonb AS lots, NULL::text AS hours
+       CASE WHEN r.process_code = 'IMEB3_CA_PRESS' THEN mark.marking_code END AS inspector,
+       NULL::integer AS round, NULL::text AS insp_type, NULL::jsonb AS lots, NULL::text AS hours
 FROM run r
 LEFT JOIN res ON res.process_run_id = r.process_run_id
 LEFT JOIN outl ON outl.process_run_id = r.process_run_id
+LEFT JOIN mark ON mark.lot_date = outl.lot_date
 LEFT JOIN mats ON mats.process_run_id = r.process_run_id
 LEFT JOIN inl ON inl.process_run_id = r.process_run_id
 UNION ALL
