@@ -6,10 +6,11 @@
 from __future__ import annotations
 
 import base64
+import json
 from typing import Literal
 
 import anthropic
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from ..config import settings
 from .journal_payload import JournalPayload
@@ -45,6 +46,26 @@ class Extraction(BaseModel):
     uncertain_notes: list[str] = Field(default_factory=list)
 
 
+def _json_text(text: str) -> str:
+    """모델 응답에서 JSON 객체 부분만 떼어 낸다(코드 블록 표시나 앞뒤 설명이 붙어도 허용)."""
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[1] if "\n" in t else t[3:]
+        if t.rstrip().endswith("```"):
+            t = t.rstrip()[:-3]
+    a, b = t.find("{"), t.rfind("}")
+    if a < 0 or b < a:
+        raise RuntimeError("모델 응답에 JSON 객체가 없습니다: " + t[:200])
+    return t[a:b + 1]
+
+
+# 구조화 출력(output_config.format)은 이 스키마에서 'compiled grammar is too large'(HTTP 400)로 거절되므로,
+# 스키마를 시스템 프롬프트로 주고 JSON 텍스트로 받아 pydantic 으로 검증한다.
+SYSTEM = ("응답은 아래 JSON Schema 를 따르는 JSON 객체 하나만 출력합니다. 코드 블록 표시나 설명 문장을 붙이지 않습니다. "
+          "스키마에 없는 키는 쓰지 않고, 값을 모르면 null 또는 빈 배열로 둡니다.\n"
+          + json.dumps(Extraction.model_json_schema(), ensure_ascii=False))
+
+
 async def extract_from_image(data: bytes, media_type: str, filename: str) -> dict:
     if not settings.anthropic_key:
         raise RuntimeError("ANTHROPIC_API_KEY 가 backend/.env.personal 에 없습니다.")
@@ -55,15 +76,21 @@ async def extract_from_image(data: bytes, media_type: str, filename: str) -> dic
     # Async 요청은 브라우저 취소/연결 종료 시 백엔드에서도 취소할 수 있게 한다.
     # 제한 시간과 재시도 횟수를 고정해 관리 화면이 무기한 대기하지 않게 한다.
     async with anthropic.AsyncAnthropic(api_key=settings.anthropic_key, timeout=90.0, max_retries=0) as client:
-        response = await client.messages.parse(
+        response = await client.messages.create(
             model=settings.anthropic_model,
             max_tokens=16000,
+            system=SYSTEM,
             messages=[{"role": "user", "content": [block, {"type": "text", "text": PROMPT}]}],
-            output_format=Extraction,
         )
     if response.stop_reason == "refusal":
         raise RuntimeError("모델이 이 요청을 거절했습니다(refusal).")
-    ex: Extraction = response.parsed_output
+    if response.stop_reason == "max_tokens":
+        raise RuntimeError("모델 응답이 길이 제한에 걸려 잘렸습니다. 한 장씩 올려 주세요.")
+    text = "".join(b.text for b in response.content if b.type == "text")
+    try:
+        ex = Extraction.model_validate_json(_json_text(text))
+    except ValidationError as e:
+        raise RuntimeError(f"모델 응답이 작업일보 스키마와 맞지 않습니다: {e.errors()[0].get('msg')} ({e.errors()[0].get('loc')})") from e
     items = []
     for j in ex.journals:
         j.source.method = "IMAGE"

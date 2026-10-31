@@ -226,7 +226,8 @@ async def _wait_for_disconnect(request: Request) -> None:
 
 
 @router.post("/journal/preview-image")
-async def journal_preview_image(request: Request, file: UploadFile = File(...)):
+async def journal_preview_image(request: Request, file: UploadFile = File(...), authorization: Optional[str] = Header(None)):
+    _admin(authorization)  # Anthropic 사용량이 드는 요청이므로 로그인(또는 관리자 토큰) 없이는 받지 않는다
     data = await file.read()
     name = (file.filename or "image").lower()
     media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif", "pdf": "application/pdf"}.get(name.rsplit(".", 1)[-1])
