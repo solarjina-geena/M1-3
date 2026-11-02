@@ -23,11 +23,14 @@ class SupabaseClient:
         if not settings.db_configured:
             raise SupabaseError("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 가 backend/.env.personal 에 없습니다.")
         self.base = settings.supabase_url.rstrip("/") + "/rest/v1"
-        self.headers = {"apikey": settings.service_key, "Authorization": f"Bearer {settings.service_key}"}
+        self.headers = {"apikey": settings.service_key}
+        # New secret keys are API keys, not JWT bearer tokens.
+        if not settings.service_key.startswith("sb_secret_"):
+            self.headers["Authorization"] = f"Bearer {settings.service_key}"
         self.http = httpx.Client(timeout=60)
 
     def _raise(self, r: httpx.Response) -> None:
-        if r.status_code >= 400:
+        if r.status_code >= 300:
             try:
                 body = r.json()
                 msg = body.get("message") or body.get("hint") or body

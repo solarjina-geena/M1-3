@@ -133,6 +133,35 @@ class SupabaseRepository(Repository):
             a["models"] = sorted(a["models"])
         return out
 
+    def stitching_defect_quantity_status(self, model: str | None, date_from: str | None, date_to: str | None) -> list[dict]:
+        """Count NULL quantities without turning blanks into confirmed zeroes.
+
+        The existing aggregate view cannot distinguish NULL within a mixed group.
+        Return counts only; raw records and source remarks stay on the server.
+        """
+        params: dict[str, Any] = {
+            "select": "quality_finding_id,defect_type!inner(defect_name),process_run!fk_quality_finding_process_run_id_model_id!inner(work_date,process!inner(process_code),product_model!inner(model_code))",
+            "record_state": "eq.ACTIVE", "quantity": "is.null",
+            "process_run.process.process_code": "eq.IMEB3_STITCHING",
+            "order": "quality_finding_id",
+        }
+        if model:
+            params["process_run.product_model.model_code"] = f"eq.{model}"
+        date_params: dict[str, Any] = {}
+        _date_filter(date_params, "work_date", date_from, date_to)
+        if "and" in date_params:
+            params["process_run.and"] = date_params["and"]
+        counts: dict[str, int] = defaultdict(int)
+        offset = 0
+        while True:
+            rows = self.c.select("quality_finding", {**params, "offset": offset}, schema=settings.schema, limit=500)
+            for row in rows:
+                counts[row["defect_type"]["defect_name"]] += 1
+            if len(rows) < 500:
+                break
+            offset += len(rows)
+        return [{"defect_name": name, "null_findings": count} for name, count in sorted(counts.items())]
+
     def chain_gaps(self, model: str | None, only_gaps: bool = False) -> list[dict]:
         params: dict[str, Any] = {"order": "depth,ca_date"}
         if model:

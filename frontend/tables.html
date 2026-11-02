@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>품질 대시보드 · IV / OV / HSV</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="stitching-defects.js"></script>
 <style>
 :root{--bg:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--line:#c3c2b7;--border:rgba(11,11,11,.10);
   --iv:#2a78d6;--ov:#eb6834;--hsv:#1baf7a;--seq:#2a78d6;--good:#0ca30c;--warn:#fab219;--bad:#d03b3b;--chip:#eef2f8}
@@ -18,6 +19,7 @@ header h1{font-size:17px;margin:0 12px 0 0}.chips{display:flex;gap:6px;flex-wrap
 nav.tabs{display:flex;gap:2px;padding:8px 16px 0;border-bottom:1px solid var(--border);overflow-x:auto}nav.tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:8px 12px;color:var(--ink2);cursor:pointer;font-size:14px;white-space:nowrap}
 nav.tabs button.on{color:var(--ink);border-color:var(--ink)}main{display:grid;grid-template-columns:1fr 360px;gap:16px;padding:16px}@media(max-width:1000px){main{grid-template-columns:1fr}}
 section.view{display:none}section.view.on{display:block}.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+main>div,main>aside{min-width:0}.card{min-width:0}#pDefectSources,#pTable{overflow-x:auto}nav.tabs>a{flex-shrink:0}
 .tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px}.tile .k{font-size:12px;color:var(--muted)}.tile .v{font-size:22px;font-variant-numeric:tabular-nums}.tile .s{font-size:12px;color:var(--ink2)}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px}.card h3{margin:0 0 8px;font-size:14px;font-weight:600}.card .sub{font-size:12px;color:var(--muted);margin:-6px 0 8px}
 .chart{position:relative;height:260px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:5px 6px;border-bottom:1px solid var(--grid);text-align:left;vertical-align:top}th{color:var(--muted);font-weight:500}td.num{text-align:right;font-variant-numeric:tabular-nums}
@@ -52,7 +54,7 @@ button.ghost{background:none;border:1px solid var(--border);color:var(--ink2);bo
     <div class="tiles" id="pTiles"></div>
     <div class="card"><h3 id="pTitle1">일자별 생산량</h3><div class="sub">모델별. 빈 날은 기록 없음(0 아님)</div><div class="chart"><canvas id="c1"></canvas></div></div>
     <div class="card"><h3 id="pTitle2">일자별 불량 수량</h3><div class="sub">작업일보에 적힌 불량 합계(숫자로 읽힌 항목만)</div><div class="chart"><canvas id="c2"></canvas></div></div>
-    <div class="card"><h3>불량 유형별 합계</h3><div class="chart" style="height:300px"><canvas id="c3"></canvas></div></div>
+    <div class="card"><h3>불량 유형별 합계</h3><p id="pDefectStatus" class="muted" hidden aria-live="polite"></p><p id="pDefectNote" class="muted" hidden></p><div class="chart" style="height:300px"><canvas id="c3"></canvas></div><details id="pDefectDetails" hidden><summary>원래 이름별 수량 보기</summary><div id="pDefectSources"></div></details></div>
     <div class="card"><details><summary>표로 보기</summary><div id="pTable"></div></details></div>
   </section>
   <section class="view" id="v-chain">
@@ -79,7 +81,7 @@ button.ghost{background:none;border:1px solid var(--border);color:var(--ink2);bo
 </main>
 <script>
 const $=s=>document.querySelector(s), api=async(p,o)=>{const r=await fetch(p,o);if(!r.ok){throw new Error((await r.json()).detail||r.statusText)}return r.json()};
-const COL={IV:getComputedStyle(document.documentElement).getPropertyValue('--iv').trim(),OV:getComputedStyle(document.documentElement).getPropertyValue('--ov').trim(),HSV:getComputedStyle(document.documentElement).getPropertyValue('--hsv').trim()};
+const COL={IV:'#111111',OV:'#eab308',HSV:'#2563eb'};
 const LABEL={IMEB3_INJECTION:'사출',IMEB3_STITCHING:'스티칭',IMEB3_WINDING:'권선(BA)',IMEB3_CA_PRESS:'압입(CA)',IMEB3_FINAL_INSPECTION:'최종검사'};
 const ORDER=['IMEB3_INJECTION','IMEB3_STITCHING','IMEB3_WINDING','IMEB3_CA_PRESS','IMEB3_FINAL_INSPECTION'];
 const st={model:'',from:'',to:'',view:'overview',charts:{}};
@@ -98,15 +100,29 @@ async function overview(){const s=await api('/api/summary?model='+st.model);
   const g=(await api('/api/lots/gaps?model='+st.model+'&only_gaps=true')).slice(0,20);$('#ovGaps').innerHTML=gapsTable(g)}
 function gapsTable(g){if(!g.length)return '<div class="muted">없음</div>';return `<table><tr><th>모델</th><th>CA LOT</th><th>날짜</th><th>검사</th><th>BA</th><th>스티칭</th><th>사출</th><th>수지</th><th>깊이</th><th>다음에 넣을 기록</th></tr>`+g.map(r=>`<tr><td>${r.model_code}</td><td><a href="#" onclick="trace('${r.ca_lot}','${r.model_code}');return false">${r.ca_lot}</a></td><td>${r.ca_date}</td><td class="num">${r.inspections||'—'}</td><td>${r.ba_lot||'—'}</td><td>${r.sti_lot||'—'}</td><td>${r.inj_lot||'—'}</td><td>${r.resin_lots||'—'}</td><td class="num">${r.depth}/4</td><td>${r.first_gap}</td></tr>`).join('')+'</table>'}
 
-async function processView(code){const series=await api(`/api/process/${code}/series?`+q());const defs=await api(`/api/defects?process=${code}&`+q());
+let processRequest=0;
+const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function defectQuantity(row){return row.null_findings==null?(row.qty===0?'확인 불가':fmt(row.qty)):(row.findings===row.null_findings?'미확정':fmt(row.qty))}
+async function processView(code){const request=++processRequest,filters={model:st.model,from:st.from,to:st.to},query=q(),stitching=code==='IMEB3_STITCHING';
+  const [series,rawDefs,status]=await Promise.all([api(`/api/process/${code}/series?`+query),api(`/api/defects?process=${code}&`+query),stitching?api('/api/defects/stitching-quantity-status?'+query).catch(()=>null):Promise.resolve(null)]);
+  if(request!==processRequest||st.view!==code)return;
+  const defs=StitchingDefects.group(code,rawDefs,status);
   const models=['IV','OV','HSV'].filter(m=>series.some(r=>r.model===m));const dates=[...new Set(series.map(r=>r.date))];
   const tot=series.reduce((a,r)=>a+(r.qty||0),0),dq=series.reduce((a,r)=>a+(r.defects||0),0),mins=series.reduce((a,r)=>a+(r.minutes||0),0);
   $('#pTiles').innerHTML=`<div class="tile"><div class="k">${LABEL[code]} ${code==='IMEB3_FINAL_INSPECTION'?'검사량':'생산량'} 합계</div><div class="v">${fmt(tot)}</div><div class="s">${dates.length}일 기록</div></div><div class="tile"><div class="k">불량 합계</div><div class="v">${fmt(dq)}</div><div class="s">${tot?(dq/tot*100).toFixed(2)+'%':'—'}</div></div>`+(mins?`<div class="tile"><div class="k">작업시간</div><div class="v">${fmt(Math.round(mins/60))}h</div><div class="s">시간당 ${fmt(Math.round(tot/(mins/60)))}</div></div>`:'')+`<div class="tile"><div class="k">모델</div><div class="v" style="font-size:16px">${models.join(' · ')||'—'}</div></div>`;
   $('#pTitle1').textContent=code==='IMEB3_FINAL_INSPECTION'?'일자별 검사량':'일자별 생산량';
-  const ds=k=>models.map(m=>({label:m,data:dates.map(d=>{const r=series.find(x=>x.date===d&&x.model===m);return r?r[k]:null}),backgroundColor:COL[m],borderColor:COL[m],borderRadius:4,maxBarThickness:18,borderSkipped:false}));
+  const ds=k=>models.map(m=>({label:m,data:dates.map(d=>{const r=series.find(x=>x.date===d&&x.model===m);return r?r[k]:null}),backgroundColor:COL[m],borderColor:m==='IV'?'#9ca3af':COL[m],borderWidth:1,borderRadius:4,maxBarThickness:18,borderSkipped:false}));
   chart('c1',{type:'bar',data:{labels:dates,datasets:ds('qty')},options:baseOpts});
   chart('c2',{type:'bar',data:{labels:dates,datasets:ds('defects')},options:baseOpts});
-  const top=defs.slice(0,12);chart('c3',{type:'bar',data:{labels:top.map(d=>d.defect_name),datasets:[{label:'불량 수량',data:top.map(d=>d.qty),backgroundColor:getComputedStyle(document.documentElement).getPropertyValue('--seq').trim(),borderRadius:4,maxBarThickness:16}]},options:{...baseOpts,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,grid:{color:Chart.defaults.borderColor},border:{display:false}},y:{grid:{display:false}}}}});
+  $('#pDefectStatus').hidden=!stitching;$('#pDefectDetails').hidden=!stitching;$('#pDefectNote').hidden=true;
+  if(stitching){const pending=status?.reduce((sum,r)=>sum+r.null_findings,0);
+    $('#pDefectStatus').textContent=status==null?'수량 확정 상태를 불러오지 못했습니다. 합계는 숫자로 저장된 수량이며, 0은 원문 공란일 수 있습니다.':`숫자로 저장된 수량 합계 ${fmt(defs.reduce((sum,r)=>sum+r.qty,0))} · 수량 미확정 ${fmt(pending)}건${pending?' (합계에 포함되지 않음)':''}`;
+    const rows=defs.flatMap(g=>g.originals.map(r=>`<tr><td>${escapeHtml(g.defect_name)}</td><td>${escapeHtml(r.defect_name)}</td><td class="num">${defectQuantity(r)}</td><td class="num">${r.null_findings==null?'확인 불가':fmt(r.null_findings)}</td></tr>`));
+    $('#pDefectSources').innerHTML=rows.length?'<table><thead><tr><th>표시명</th><th>원래 이름</th><th>숫자 수량</th><th>미확정 건수</th></tr></thead><tbody>'+rows.join('')+'</tbody></table>':'<p class="muted">선택한 조건의 불량 기록이 없습니다.</p>';
+    if((!filters.model||filters.model==='OV')&&(!filters.from||filters.from<='2026-09-14')&&(!filters.to||filters.to>='2026-09-14')&&rawDefs.some(r=>r.defect_name==='location')){$('#pDefectNote').hidden=false;$('#pDefectNote').textContent='9월 14일 OV 위치도 수량 8은 원본의 덧쓴 숫자 판독이 보류된 값입니다. 저장된 수량을 그대로 표시합니다.';}
+  }
+  const top=(stitching?defs.filter(d=>d.qty>0||(d.null_findings!=null&&d.findings>d.null_findings)):defs).slice(0,12);
+  chart('c3',{type:'bar',data:{labels:top.map(d=>d.defect_name),datasets:[{label:'불량 수량',data:top.map(d=>d.qty),backgroundColor:getComputedStyle(document.documentElement).getPropertyValue('--seq').trim(),borderRadius:4,maxBarThickness:16}]},options:{...baseOpts,indexAxis:'y',plugins:{legend:{display:false},tooltip:stitching?{callbacks:{afterLabel:ctx=>{const g=top[ctx.dataIndex];return [...g.originals.map(r=>`${r.defect_name}: ${defectQuantity(r)}`),g.null_findings==null?'미확정 건수: 확인 불가':`미확정: ${fmt(g.null_findings)}건`];}}}:{}},scales:{x:{beginAtZero:true,grid:{color:Chart.defaults.borderColor},border:{display:false}},y:{grid:{display:false}}}}});
   $('#pTable').innerHTML=`<table><tr><th>날짜</th><th>모델</th><th>건</th><th>수량</th><th>불량</th><th>불량률</th><th>작업시간(분)</th></tr>`+series.map(r=>`<tr><td>${r.date}</td><td>${r.model}</td><td class="num">${r.runs}</td><td class="num">${fmt(r.qty)}</td><td class="num">${fmt(r.defects)}</td><td class="num">${r.defect_rate==null?'—':r.defect_rate+'%'}</td><td class="num">${fmt(r.minutes)}</td></tr>`).join('')+'</table>'}
 
 async function chainView(){const only=$('#onlyGaps').checked;const g=await api('/api/lots/gaps?model='+st.model+'&only_gaps='+only);$('#gapsTable').innerHTML=gapsTable(g)}
