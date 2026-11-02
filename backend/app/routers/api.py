@@ -185,10 +185,35 @@ def journal_preview(payload: JournalPayload):
     return {"payload": payload.model_dump(), "normalized": payload.normalized()}
 
 
+STAGE_LABEL = {"IMEB3_INJECTION": "사출", "IMEB3_STITCHING": "스티칭", "IMEB3_WINDING": "권선(BA)", "IMEB3_CA_PRESS": "압입(CA)",
+               "IMEB3_FINAL_INSPECTION": "최종검사"}
+VIA_LABEL = {"form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기"}
+
+
+def _actor(who: dict) -> str:
+    """CRUD 이력의 '누가': 로그인 이메일은 앞 3글자만 남겨 가린다(관리자 토큰이면 admin-token)."""
+    email = who.get("email") or ""
+    if email:
+        local = email.split("@")[0]
+        return f"web:{local[:3]}***"
+    return "web:admin-token" if who.get("via") == "admin_token" else settings.actor
+
+
+def _reason(stage_code: str, via: str, summary: str) -> str:
+    """CRUD 이력의 '무엇을': [공정] 입력경로 · 요약 — 공정 단계별로 걸러 보기 쉽게 같은 형식을 쓴다."""
+    return f"[{STAGE_LABEL.get(stage_code, stage_code or '공통')}] {VIA_LABEL.get(via, via or '입력')} · {summary}"
+
+
+def _journal_meta(n: dict, who: dict, via: str) -> dict:
+    n["actor"] = _actor(who)
+    n["reason"] = _reason(n.get("process", ""), via, f"{n.get('model', '')} {n.get('work_date', '')} {n.get('shift', '')}".strip())
+    return n
+
+
 @router.post("/journal")
-def journal_save(payload: JournalPayload, authorization: Optional[str] = Header(None)):
-    _admin(authorization)
-    return _wrap(_repo().journal_save, payload.normalized())
+def journal_save(payload: JournalPayload, authorization: Optional[str] = Header(None), via: str = Query("form", max_length=20)):
+    who = _admin(authorization)
+    return _wrap(_repo().journal_save, _journal_meta(payload.normalized(), who, via))
 
 
 class BatchIn(BaseModel):
@@ -196,13 +221,13 @@ class BatchIn(BaseModel):
 
 
 @router.post("/journal/batch")
-def journal_batch(body: BatchIn, authorization: Optional[str] = Header(None)):
-    _admin(authorization)
+def journal_batch(body: BatchIn, authorization: Optional[str] = Header(None), via: str = Query("file", max_length=20)):
+    who = _admin(authorization)
     repo = _repo()
     results = []
     for i, p in enumerate(body.items):
         try:
-            results.append({"index": i, "ok": True, "result": repo.journal_save(p.normalized())})
+            results.append({"index": i, "ok": True, "result": repo.journal_save(_journal_meta(p.normalized(), who, via))})
         except SupabaseError as e:
             results.append({"index": i, "ok": False, "error": str(e)})
     return {"saved": sum(1 for r in results if r["ok"]), "failed": sum(1 for r in results if not r["ok"]), "results": results}
@@ -276,10 +301,11 @@ class ConfirmIn(BaseModel):
 
 @router.post("/links/confirm")
 def links_confirm(body: ConfirmIn, authorization: Optional[str] = Header(None)):
-    _admin(authorization)
+    who = _admin(authorization)
     if body.table not in ("process_run_lot", "material_usage", "inspection_lot", "production_lot"):
         raise HTTPException(400, "table 은 process_run_lot / material_usage / inspection_lot / production_lot 중 하나")
-    return _wrap(_repo().link_confirm, body.table, body.id, body.status, body.reason)
+    reason = body.reason if body.reason.startswith("[") else f"[LOT 연결] 연결 확인 · {body.table} → {body.status} · {body.reason}"
+    return _wrap(_repo().link_confirm, body.table, body.id, body.status, reason, _actor(who))
 
 
 # ---------------------------------------------------------------- AI
@@ -335,6 +361,61 @@ def workbook_evidence():
 def process_conditions(limit: int = Query(5000, ge=1, le=5000)):
     """사출(BB) 단계 클릭 화면의 조건 시계열. 대시보드의 다른 조회와 같이 공개 읽기(팀원 모두 열람)."""
     return _wrap(_repo().injection_condition_rows, limit)
+
+
+class PositionRow(BaseModel):
+    no: int
+    lx: Optional[str] = None
+    ly: Optional[str] = None
+    rx: Optional[str] = None
+    ry: Optional[str] = None
+
+
+class PositionIn(BaseModel):
+    model: str
+    check_date: str
+    rows: list[PositionRow]
+    replace: bool = False
+    source: dict[str, Any] = {}
+
+
+@router.get("/position-checks")
+def position_checks(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"), date_from: Optional[str] = Query(None, alias="from"),
+                    date_to: Optional[str] = Query(None, alias="to")):
+    """CA 초품 핀 위치도(판정은 DB 뷰가 기준값으로 계산). 대시보드 CA 화면용 공개 읽기."""
+    return _wrap(_repo().position_checks, model, date_from, date_to)
+
+
+@router.get("/position-spec")
+def position_spec():
+    """초품 위치도 판정 기준(모델별, DB 값)."""
+    return _wrap(_repo().position_spec)
+
+
+@router.post("/position")
+def position_save(body: PositionIn, authorization: Optional[str] = Header(None)):
+    """초품 위치도 1회 저장(quality_check 초품 + measurement). 같은 모델·날짜가 있으면 replace=true 일 때만 이전 기록 VOID."""
+    who = _admin(authorization)
+    p = body.model_dump()
+    p["rows"] = [r for r in p["rows"] if any(r.get(k) for k in ("lx", "ly", "rx", "ry"))]
+    p["actor"] = _actor(who)
+    p["reason"] = _reason("IMEB3_CA_PRESS", "position", f"초품 위치도 {body.model} {body.check_date} 시료 {len(p['rows'])}개"
+                          + (" (기존 기록 바꾸기)" if body.replace else ""))
+    return _wrap(_repo().position_save, p)
+
+
+@router.get("/admin/crud-history")
+def crud_history(stage: Optional[str] = Query(None, max_length=40), actor: Optional[str] = Query(None, max_length=60),
+                 limit: int = Query(3000, ge=1, le=20000), authorization: Optional[str] = Header(None)):
+    """CRUD 이력: 팀 감사 테이블(mqi_audit.row_change)을 공정 단계로 풀어 저장 1회(트랜잭션) 단위로 묶어 보여 준다(로그인 필요)."""
+    _admin(authorization)
+    return _wrap(_repo().crud_history, stage or None, actor or None, limit)
+
+
+@router.get("/admin/crud-history/{transaction_id}")
+def crud_rows(transaction_id: int, authorization: Optional[str] = Header(None)):
+    _admin(authorization)
+    return _wrap(_repo().crud_rows, transaction_id)
 
 
 @router.get("/process-conditions/window")

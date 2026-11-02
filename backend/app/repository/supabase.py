@@ -432,9 +432,88 @@ class SupabaseRepository(Repository):
         payload.setdefault("actor", settings.actor)
         return self.c.rpc("m13_journal_save", {"p": payload})
 
-    def link_confirm(self, table: str, row_id: str, status: str, reason: str) -> dict:
+    # ---------------------------------------------------------------- CA 초품 핀 위치도 (quality_check 초품 + measurement)
+    def position_checks(self, model: str | None = None, date_from: str | None = None, date_to: str | None = None) -> list[dict]:
+        """뷰 m13_position_checks: 시료·좌우별 X/Y, 기준 대비 ΔX/ΔY, 위치도(X단독·Y단독·종합)와 판정(정상·경계·불량). 기준은 DB(POSITION-A1-3)."""
+        params: dict[str, Any] = {"order": "check_date.asc,variant.asc,side.asc,sample_no.asc"}
+        if model:
+            params["variant"] = f"eq.{model}"
+        if date_from and date_to:
+            params["and"] = f"(check_date.gte.{date_from},check_date.lte.{date_to})"
+        elif date_from:
+            params["check_date"] = f"gte.{date_from}"
+        elif date_to:
+            params["check_date"] = f"lte.{date_to}"
+        return self.c.select("m13_position_checks", params, limit=20000)
+
+    def position_spec(self) -> dict:
+        """초품 위치도 기준(모델별): process_setup_spec(POSITION-A1-3) + parameter_definition.description(judge). 입력 미리보기 판정용."""
+        sch = settings.schema
+        specs = self.c.select("process_setup_spec", {"spec_revision": "eq.POSITION-A1-3", "record_state": "eq.ACTIVE", "select": "spec_id,model_id,verification_status"}, schema=sch, limit=50)
+        models = {m["model_id"]: m["model_code"] for m in self.c.select("product_model", {"select": "model_id,model_code"}, schema=sch, limit=50)}
+        params = {d["parameter_id"]: d for d in self.c.select("parameter_definition", {"parameter_code": "in.(PIN_X,PIN_Y,PIN_POSITION)", "select": "parameter_id,parameter_code,description"}, schema=sch, limit=10)}
+        out: dict[str, dict] = {}
+        for sp in specs:
+            items = self.c.select("process_setup_spec_item", {"spec_id": f"eq.{sp['spec_id']}", "record_state": "eq.ACTIVE", "select": "parameter_id,target_numeric,max_numeric"}, schema=sch, limit=20)
+            m = out.setdefault(models.get(sp["model_id"], "?"), {"status": sp["verification_status"]})
+            for it in items:
+                d = params.get(it["parameter_id"]) or {}
+                code = d.get("parameter_code")
+                if code == "PIN_X":
+                    m["nom_x"] = it["target_numeric"]
+                elif code == "PIN_Y":
+                    m["nom_y"] = it["target_numeric"]
+                elif code == "PIN_POSITION":
+                    m["spec"] = it["max_numeric"]
+                    try:
+                        j = json.loads(d.get("description") or "{}").get("judge", {})
+                    except ValueError:
+                        j = {}
+                    m["control"] = j.get("control")
+                    m["display_range"] = j.get("display_range")
+        return out
+
+    def position_save(self, payload: dict[str, Any]) -> dict:
         self._guard()
-        return self.c.rpc("m13_link_confirm", {"p": {"table": table, "id": row_id, "status": status, "actor": settings.actor, "reason": reason}})
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_position_save", {"p": payload})
+
+    # ---------------------------------------------------------------- CRUD 이력 (팀 감사 테이블 mqi_audit.row_change → 공정 단계)
+    def crud_history(self, stage: str | None = None, actor: str | None = None, limit: int = 3000) -> dict:
+        """뷰 m13_crud_history 를 저장 1회(트랜잭션) 단위로 묶는다. 같은 트랜잭션 = 같은 actor·사유로 한 번에 바뀐 행들."""
+        params: dict[str, Any] = {"order": "audit_id.desc",
+                                  "select": "audit_id,changed_at,table_name,row_id,actor_ref,change_reason,transaction_id,action,stage_code,stage_label,model_code,changed_columns"}
+        if stage:
+            params["stage_code"] = f"eq.{stage}"
+        if actor:
+            params["actor_ref"] = f"eq.{actor}"
+        rows = self.c.select("m13_crud_history", params, limit=limit)
+        groups: dict[Any, dict] = {}
+        for r in rows:
+            g = groups.setdefault(r["transaction_id"], {"transaction_id": r["transaction_id"], "changed_at": r["changed_at"], "actor": r["actor_ref"],
+                                                        "reason": r["change_reason"], "stages": {}, "tables": {}, "actions": {}, "models": set(), "rows": 0})
+            g["changed_at"] = min(g["changed_at"], r["changed_at"])
+            g["rows"] += 1
+            for key, val in (("stages", r["stage_label"]), ("tables", r["table_name"]), ("actions", r["action"])):
+                g[key][val] = g[key].get(val, 0) + 1
+            if r.get("model_code"):
+                g["models"].add(r["model_code"])
+        out = []
+        for g in groups.values():
+            g["models"] = sorted(g["models"])
+            out.append(g)
+        out.sort(key=lambda g: g["changed_at"], reverse=True)
+        stage_totals: dict[str, int] = {}
+        for r in rows:
+            stage_totals[r["stage_label"]] = stage_totals.get(r["stage_label"], 0) + 1
+        return {"transactions": out, "stage_totals": stage_totals, "rows": len(rows), "limited": len(rows) >= limit}
+
+    def crud_rows(self, transaction_id: int) -> list[dict]:
+        return self.c.select("m13_crud_history", {"transaction_id": f"eq.{transaction_id}", "order": "audit_id.asc"}, limit=5000)
+
+    def link_confirm(self, table: str, row_id: str, status: str, reason: str, actor: str | None = None) -> dict:
+        self._guard()
+        return self.c.rpc("m13_link_confirm", {"p": {"table": table, "id": row_id, "status": status, "actor": actor or settings.actor, "reason": reason}})
 
 
 _repo: Repository | None = None
