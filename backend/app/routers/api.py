@@ -101,6 +101,13 @@ def stitching_defect_quantity_status(model: Optional[str] = None, date_from: Opt
     return _wrap(_repo().stitching_defect_quantity_status, model, date_from, date_to)
 
 
+@router.get("/defects/quantity-status")
+def defect_quantity_status(process: str, model: Optional[str] = None, date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
+    if process not in PROCESS_LABEL:
+        raise HTTPException(404, "공정 코드 아님: " + process)
+    return _wrap(_repo().defect_quantity_status, process, model, date_from, date_to)
+
+
 @router.get("/lots/gaps")
 def lot_gaps(model: Optional[str] = None, only_gaps: bool = False):
     return _wrap(_repo().chain_gaps, model, only_gaps)

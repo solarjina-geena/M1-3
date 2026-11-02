@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>품질 대시보드 · IV / OV / HSV</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="stitching-defects.js"></script>
+<script src="stitching-defects.js?v=2"></script>
 <style>
 :root{--bg:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--line:#c3c2b7;--border:rgba(11,11,11,.10);
   --iv:#2a78d6;--ov:#eb6834;--hsv:#1baf7a;--seq:#2a78d6;--good:#0ca30c;--warn:#fab219;--bad:#d03b3b;--chip:#eef2f8}
@@ -52,9 +52,9 @@ button.ghost{background:none;border:1px solid var(--border);color:var(--ink2);bo
   </section>
   <section class="view" id="v-process">
     <div class="tiles" id="pTiles"></div>
-    <div class="card"><h3 id="pTitle1">일자별 생산량</h3><div class="sub">모델별. 빈 날은 기록 없음(0 아님)</div><div class="chart"><canvas id="c1"></canvas></div></div>
-    <div class="card"><h3 id="pTitle2">일자별 불량 수량</h3><div class="sub">작업일보에 적힌 불량 합계(숫자로 읽힌 항목만)</div><div class="chart"><canvas id="c2"></canvas></div></div>
-    <div class="card"><h3>불량 유형별 합계</h3><p id="pDefectStatus" class="muted" hidden aria-live="polite"></p><p id="pDefectNote" class="muted" hidden></p><div class="chart" style="height:300px"><canvas id="c3"></canvas></div><details id="pDefectDetails" hidden><summary>원래 이름별 수량 보기</summary><div id="pDefectSources"></div></details></div>
+    <div class="card" id="pProductionCard"><h3 id="pTitle1">일자별 생산량</h3><div class="sub">모델별. 빈 날은 기록 없음(0 아님)</div><div class="chart"><canvas id="c1"></canvas></div></div>
+    <div class="card" id="pDailyDefectCard"><h3 id="pTitle2">일자별 불량 수량</h3><div class="sub">작업일보에 적힌 불량 합계(숫자로 읽힌 항목만)</div><div class="chart"><canvas id="c2"></canvas></div></div>
+    <div class="card" id="pDefectCard"><h3>불량 유형별 합계</h3><p id="pDefectScope" class="muted" hidden></p><p id="pDefectStatus" class="muted" hidden aria-live="polite"></p><p id="pDefectNote" class="muted" hidden></p><div class="chart" style="height:300px"><canvas id="c3"></canvas></div><details id="pDefectDetails" hidden><summary>원래 이름별 수량 보기 (전체 유형)</summary><div id="pDefectSources"></div></details></div>
     <div class="card"><details><summary>표로 보기</summary><div id="pTable"></div></details></div>
   </section>
   <section class="view" id="v-chain">
@@ -103,10 +103,11 @@ function gapsTable(g){if(!g.length)return '<div class="muted">없음</div>';retu
 let processRequest=0;
 const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function defectQuantity(row){return row.null_findings==null?(row.qty===0?'확인 불가':fmt(row.qty)):(row.findings===row.null_findings?'미확정':fmt(row.qty))}
-async function processView(code){const request=++processRequest,filters={model:st.model,from:st.from,to:st.to},query=q(),stitching=code==='IMEB3_STITCHING';
-  const [series,rawDefs,status]=await Promise.all([api(`/api/process/${code}/series?`+query),api(`/api/defects?process=${code}&`+query),stitching?api('/api/defects/stitching-quantity-status?'+query).catch(()=>null):Promise.resolve(null)]);
+async function processView(code){const request=++processRequest,filters={model:st.model,from:st.from,to:st.to},query=q(),stitching=code==='IMEB3_STITCHING',enhanced=StitchingDefects.supported(code);
+  const [series,rawDefs,status]=await Promise.all([api(`/api/process/${code}/series?`+query),api(`/api/defects?process=${code}&`+query),enhanced?api('/api/defects/quantity-status?process='+encodeURIComponent(code)+'&'+query).catch(()=>null):Promise.resolve(null)]);
   if(request!==processRequest||st.view!==code)return;
   const defs=StitchingDefects.group(code,rawDefs,status);
+  if(code==='IMEB3_FINAL_INSPECTION')$('#pTiles').after($('#pDefectCard'));else $('#pDailyDefectCard').after($('#pDefectCard'));
   const models=['IV','OV','HSV'].filter(m=>series.some(r=>r.model===m));const dates=[...new Set(series.map(r=>r.date))];
   const tot=series.reduce((a,r)=>a+(r.qty||0),0),dq=series.reduce((a,r)=>a+(r.defects||0),0),mins=series.reduce((a,r)=>a+(r.minutes||0),0);
   $('#pTiles').innerHTML=`<div class="tile"><div class="k">${LABEL[code]} ${code==='IMEB3_FINAL_INSPECTION'?'검사량':'생산량'} 합계</div><div class="v">${fmt(tot)}</div><div class="s">${dates.length}일 기록</div></div><div class="tile"><div class="k">불량 합계</div><div class="v">${fmt(dq)}</div><div class="s">${tot?(dq/tot*100).toFixed(2)+'%':'—'}</div></div>`+(mins?`<div class="tile"><div class="k">작업시간</div><div class="v">${fmt(Math.round(mins/60))}h</div><div class="s">시간당 ${fmt(Math.round(tot/(mins/60)))}</div></div>`:'')+`<div class="tile"><div class="k">모델</div><div class="v" style="font-size:16px">${models.join(' · ')||'—'}</div></div>`;
@@ -114,15 +115,16 @@ async function processView(code){const request=++processRequest,filters={model:s
   const ds=k=>models.map(m=>({label:m,data:dates.map(d=>{const r=series.find(x=>x.date===d&&x.model===m);return r?r[k]:null}),backgroundColor:COL[m],borderColor:m==='IV'?'#9ca3af':COL[m],borderWidth:1,borderRadius:4,maxBarThickness:18,borderSkipped:false}));
   chart('c1',{type:'bar',data:{labels:dates,datasets:ds('qty')},options:baseOpts});
   chart('c2',{type:'bar',data:{labels:dates,datasets:ds('defects')},options:baseOpts});
-  $('#pDefectStatus').hidden=!stitching;$('#pDefectDetails').hidden=!stitching;$('#pDefectNote').hidden=true;
-  if(stitching){const pending=status?.reduce((sum,r)=>sum+r.null_findings,0);
+  $('#pDefectStatus').hidden=!enhanced;$('#pDefectDetails').hidden=!enhanced;$('#pDefectNote').hidden=true;
+  if(enhanced){const pending=status?.reduce((sum,r)=>sum+r.null_findings,0);
     $('#pDefectStatus').textContent=status==null?'수량 확정 상태를 불러오지 못했습니다. 합계는 숫자로 저장된 수량이며, 0은 원문 공란일 수 있습니다.':`숫자로 저장된 수량 합계 ${fmt(defs.reduce((sum,r)=>sum+r.qty,0))} · 수량 미확정 ${fmt(pending)}건${pending?' (합계에 포함되지 않음)':''}`;
     const rows=defs.flatMap(g=>g.originals.map(r=>`<tr><td>${escapeHtml(g.defect_name)}</td><td>${escapeHtml(r.defect_name)}</td><td class="num">${defectQuantity(r)}</td><td class="num">${r.null_findings==null?'확인 불가':fmt(r.null_findings)}</td></tr>`));
     $('#pDefectSources').innerHTML=rows.length?'<table><thead><tr><th>표시명</th><th>원래 이름</th><th>숫자 수량</th><th>미확정 건수</th></tr></thead><tbody>'+rows.join('')+'</tbody></table>':'<p class="muted">선택한 조건의 불량 기록이 없습니다.</p>';
-    if((!filters.model||filters.model==='OV')&&(!filters.from||filters.from<='2026-09-14')&&(!filters.to||filters.to>='2026-09-14')&&rawDefs.some(r=>r.defect_name==='location')){$('#pDefectNote').hidden=false;$('#pDefectNote').textContent='9월 14일 OV 위치도 수량 8은 원본의 덧쓴 숫자 판독이 보류된 값입니다. 저장된 수량을 그대로 표시합니다.';}
+    if(stitching&&(!filters.model||filters.model==='OV')&&(!filters.from||filters.from<='2026-09-14')&&(!filters.to||filters.to>='2026-09-14')&&rawDefs.some(r=>r.defect_name==='location')){$('#pDefectNote').hidden=false;$('#pDefectNote').textContent='9월 14일 OV 위치도 수량 8은 원본의 덧쓴 숫자 판독이 보류된 값입니다. 저장된 수량을 그대로 표시합니다.';}
   }
-  const top=(stitching?defs.filter(d=>d.qty>0||(d.null_findings!=null&&d.findings>d.null_findings)):defs).slice(0,12);
-  chart('c3',{type:'bar',data:{labels:top.map(d=>d.defect_name),datasets:[{label:'불량 수량',data:top.map(d=>d.qty),backgroundColor:getComputedStyle(document.documentElement).getPropertyValue('--seq').trim(),borderRadius:4,maxBarThickness:16}]},options:{...baseOpts,indexAxis:'y',plugins:{legend:{display:false},tooltip:stitching?{callbacks:{afterLabel:ctx=>{const g=top[ctx.dataIndex];return [...g.originals.map(r=>`${r.defect_name}: ${defectQuantity(r)}`),g.null_findings==null?'미확정 건수: 확인 불가':`미확정: ${fmt(g.null_findings)}건`];}}}:{}},scales:{x:{beginAtZero:true,grid:{color:Chart.defaults.borderColor},border:{display:false}},y:{grid:{display:false}}}}});
+  const plottable=enhanced?defs.filter(d=>d.qty>0||(d.null_findings!=null&&d.findings>d.null_findings)):defs,top=plottable.slice(0,12);
+  $('#pDefectScope').hidden=!enhanced||plottable.length<=12;$('#pDefectScope').textContent=`그래프는 수량 상위 12개 유형을 표시합니다. 전체 ${fmt(plottable.length)}개 유형과 원래 이름별 수량은 아래에서 확인할 수 있습니다.`;
+  chart('c3',{type:'bar',data:{labels:top.map(d=>d.defect_name),datasets:[{label:'불량 수량',data:top.map(d=>d.qty),backgroundColor:getComputedStyle(document.documentElement).getPropertyValue('--seq').trim(),borderRadius:4,maxBarThickness:16}]},options:{...baseOpts,indexAxis:'y',plugins:{legend:{display:false},tooltip:enhanced?{callbacks:{afterLabel:ctx=>{const g=top[ctx.dataIndex];return [...g.originals.map(r=>`${r.defect_name}: ${defectQuantity(r)}`),g.null_findings==null?'미확정 건수: 확인 불가':`미확정: ${fmt(g.null_findings)}건`];}}}:{}},scales:{x:{beginAtZero:true,grid:{color:Chart.defaults.borderColor},border:{display:false}},y:{grid:{display:false}}}}});
   $('#pTable').innerHTML=`<table><tr><th>날짜</th><th>모델</th><th>건</th><th>수량</th><th>불량</th><th>불량률</th><th>작업시간(분)</th></tr>`+series.map(r=>`<tr><td>${r.date}</td><td>${r.model}</td><td class="num">${r.runs}</td><td class="num">${fmt(r.qty)}</td><td class="num">${fmt(r.defects)}</td><td class="num">${r.defect_rate==null?'—':r.defect_rate+'%'}</td><td class="num">${fmt(r.minutes)}</td></tr>`).join('')+'</table>'}
 
 async function chainView(){const only=$('#onlyGaps').checked;const g=await api('/api/lots/gaps?model='+st.model+'&only_gaps='+only);$('#gapsTable').innerHTML=gapsTable(g)}
