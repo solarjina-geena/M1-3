@@ -96,6 +96,11 @@ def defects(process: Optional[str] = None, model: Optional[str] = None, date_fro
     return _wrap(_repo().defects, process, model, date_from, date_to)
 
 
+@router.get("/defects/stitching-quantity-status")
+def stitching_defect_quantity_status(model: Optional[str] = None, date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
+    return _wrap(_repo().stitching_defect_quantity_status, model, date_from, date_to)
+
+
 @router.get("/lots/gaps")
 def lot_gaps(model: Optional[str] = None, only_gaps: bool = False):
     return _wrap(_repo().chain_gaps, model, only_gaps)
