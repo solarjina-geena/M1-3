@@ -8,6 +8,8 @@
     ...['전장', 'electrical', '단자', 'length', '전장불량', 'terminal'].map(n => [n, '전장 불량'])
   ]);
   const processNames = {
+    // Injection keeps original names while sharing NULL counts and source details.
+    IMEB3_INJECTION: new Map(),
     IMEB3_STITCHING: new Map([...names].map(([name, label]) => [normalize(name), label])),
     IMEB3_WINDING: map([
       ['용접 불량', ['용접', '용접불량', 'weld', 'welding', 'weld_ng']],
