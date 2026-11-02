@@ -32,6 +32,24 @@ def mask_name(raw: str | None) -> str | None:
     return NAME_RE.sub(_m, str(raw))[:60]
 
 
+def marking_code_date(code: str | None, base: str | None) -> str | None:
+    """CA 제품 LOT 마킹코드(조견표) → 생산일. 'Z' + 월 글자(A=1월 … L=12월) + 일 글자(A=1 … Z=26, 2~6=27~31일).
+    예: ZHF=8/6, ZIU=9/21, ZH4=8/29. 한 글자라도 못 읽었으면('?') None — 추정하지 않는다.
+    연도는 검사일(base) 기준, 마킹 월이 검사 월보다 뒤면 전년도."""
+    c = str(code or "").strip().upper()
+    m = re.fullmatch(r"Z([A-L])([A-Z2-6])", c)
+    if not m:
+        return None
+    month = ord(m.group(1)) - 64
+    day = ord(m.group(2)) - 64 if m.group(2).isalpha() else 25 + int(m.group(2))
+    try:
+        b = date.fromisoformat(base) if base else date.today()
+        year = b.year - 1 if month > b.month else b.year
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return None
+
+
 def norm_date(raw: str | None, base: str | None = None) -> str | None:
     """'26.07.02' / '2/20' / '8.28' / '2026-08-10' -> 'YYYY-MM-DD'. base(작업일)보다 미래면 작년으로."""
     if not raw:
@@ -154,10 +172,16 @@ class JournalPayload(BaseModel):
         for l in d["lots"]:
             l["lot_date"] = norm_date(l.get("lot_date"), None)
             if not l.get("marking_code") and l.get("raw"):
-                mm = re.match(r"\s*([A-Z0-9]{3})", str(l["raw"]))
+                mm = re.match(r"\s*([A-Z0-9?]{3})", str(l["raw"]).upper())
                 l["marking_code"] = mm.group(1) if mm else None
+            if not l.get("lot_date") and l.get("marking_code"):
+                # 조견표(Z+월+일)로 세 글자가 모두 읽힌 경우에만 날짜를 푼다. '?' 가 있으면 비워 둔다
+                # → RPC 가 UNRESOLVED 로 저장. 검사일에 가장 가까운 LOT 같은 추정 연결은 하지 않는다.
+                l["lot_date"] = marking_code_date(l["marking_code"], self.work_date)
+                if l["lot_date"]:
+                    l["lot_date_rule"] = "marking_code_table"
             if l.get("boxes") is None and l.get("raw"):
-                mb = re.search(r"=\s*(\d+)\s*box", str(l["raw"]), re.I)
+                mb = re.search(r"[=:]?\s*(\d+)\s*box", str(l["raw"]), re.I)
                 l["boxes"] = int(mb.group(1)) if mb else None
         if self.process == "IMEB3_FINAL_INSPECTION":
             d["inspected_qty"] = self.gross_output_qty
