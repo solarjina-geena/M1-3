@@ -9,7 +9,7 @@
 -- 규칙(사용자 지시 2026-11-02): "엑셀 data 의 탭 이름이 LOT" → 탭 20260810D1 = 보빈(사출) LOT 260810D1. 사출 화면은 날짜 대신 LOT 으로 표시.
 --   야간 행은 같은 날 N1 LOT(시트 하단 '사진 원본 참조 …N' 근거) → 사람 확인 전이라 NEEDS_REVIEW, CROSS_CHECK.
 --   PRIMARY 연결은 팀 트리거 규칙대로 field_review(VERIFIED) 값 = 대상 칸 값일 때만. 허용폭 셀은 min/max 와 값이 달라 CROSS_CHECK.
--- 원본 파일: sha256 ce7c6e07…3f55, 7,518,349 bytes (M1-2/firestore_import/사출조건표.xlsx).
+-- 원본 파일: sha256 ce7c6e07…3f55, 7,518,349 bytes. 팀 결정 DEC-001 에 따라 원본은 보관하지 않는다(storage_key = UNSTORED:sha256:…).
 -- 다시 돌려도 결과가 같다(md5 결정적 id + ON CONFLICT). 마지막에 실측·기준 remark 의 시트/셀/날짜/주야를 지운다.
 BEGIN ISOLATION LEVEL SERIALIZABLE;
 SET LOCAL mqi.actor_ref = 'm1-3-injection-conditions';
@@ -42,8 +42,8 @@ VALUES (md5('m13:inj-cond:bundle')::uuid, md5('m13:inj-cond:ingest')::uuid, 'M1-
 ON CONFLICT DO NOTHING;
 INSERT INTO mqi.source_asset (asset_id, sha256_hash, asset_type, mime_type, file_size_bytes, storage_key, remark)
 VALUES (md5('m13:inj-cond:asset')::uuid, 'ce7c6e077e48e870ea69918fda346c27339ea8ddb638f0a1137f2da163f53f55', 'EXCEL',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 7518349, 'local/M1-2/firestore_import/사출조건표.xlsx',
-        '{"ds": "INJ_COND_XLSX_V1", "note": "비공개 원본, 로컬 보관"}')
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 7518349, 'UNSTORED:sha256:ce7c6e077e48e870ea69918fda346c27339ea8ddb638f0a1137f2da163f53f55',
+        '{"ds": "INJ_COND_XLSX_V1", "storage": "UNSTORED", "policy": "DEC-001 원본 영구 비보관 — 해시·크기·셀 위치만 보존, 재확인 시 원본 재업로드", "original_filename": "사출조건표.xlsx"}')
 ON CONFLICT DO NOTHING;
 INSERT INTO mqi.source_bundle_asset (bundle_asset_id, bundle_id, asset_id, original_filename, relative_path, remark)
 VALUES (md5('m13:inj-cond:bundle-asset')::uuid, md5('m13:inj-cond:bundle')::uuid, md5('m13:inj-cond:asset')::uuid,
