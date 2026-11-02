@@ -360,8 +360,9 @@ class SupabaseRepository(Repository):
         keep = {c for f in self.INJECTION_FACTORS for c in f["series"]} | {"BOBBIN_WEIGHT"}
         for r in seq:
             r["values"] = {k: v for k, v in r["values"].items() if k in keep}
+        equipment = sorted({x.get("equipment_code") for x in runs.values() if x.get("equipment_code")})  # DB 설비 사용 기록에서
         return {"anchor": anchor, "window": {"before": before, "after": after, "applied": bool(anchor_keys)},
-                "equipment": "DS120-1", "factors": self.INJECTION_FACTORS, "later_factors": self.INJECTION_LATER, "records": seq}
+                "equipment": "/".join(equipment) or None, "factors": self.INJECTION_FACTORS, "later_factors": self.INJECTION_LATER, "records": seq}
 
     def recent_runs(self, model: str | None, limit: int = 50) -> list[dict]:
         params: dict[str, Any] = {"order": "work_date.desc"}
