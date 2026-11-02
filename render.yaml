@@ -6,6 +6,12 @@ services:
     runtime: python
     plan: free
     rootDir: backend
+    # rootDir 만 있으면 backend/ 안이 바뀐 커밋만 자동 배포된다. 화면(frontend/)·설정 변경도 배포되도록 감시 경로를 넣는다.
+    buildFilter:
+      paths:
+        - backend/**
+        - frontend/**
+        - render.yaml
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health

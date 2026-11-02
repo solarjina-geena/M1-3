@@ -1,4 +1,7 @@
-"""M1-3 백엔드: FastAPI. /api/* 는 routers/api.py, 나머지는 frontend/ 정적 파일."""
+"""M1-3 백엔드: FastAPI. /api/* 는 routers/api.py, 나머지는 frontend/ 정적 파일.
+
+배포 주의: Render 는 render.yaml 의 rootDir(backend)·buildFilter 경로가 바뀐 커밋만 자동 배포한다.
+"""
 from __future__ import annotations
 
 from fastapi import FastAPI
