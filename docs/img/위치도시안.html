@@ -1,0 +1,112 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>CA 위치도 시안</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#eef1f4;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#1d2329}
+.app{padding:18px 22px}
+.eyebrow{font-size:11px;letter-spacing:2.5px;color:#5c6670;font-weight:700}
+h1{margin:4px 0 8px;font-size:24px}
+.flow{background:#161c24;border-radius:14px;padding:8px 10px;display:flex;align-items:center;gap:8px}
+.flow .t{color:#fff;font-size:11px;padding:0 10px;width:180px}.flow .t b{display:block;font-size:11.5px;margin-bottom:4px}.flow .t span{color:#9aa4ae;font-size:11px}
+.step{flex:1;border:1px solid #2d3640;border-radius:8px;padding:8px 10px;color:#fff;background:#1d252f;min-height:70px}
+.step small{font-size:9.5px;color:#9aa4ae}.step b{display:block;font-size:14px;margin:3px 0}.step span{font-size:10.5px;color:#9aa4ae}
+.step.on{background:#eaf2ff;border:2px solid #4a8df0;color:#123}.step.on small,.step.on span{color:#3b5b85}
+.flow i{color:#6c7780;font-style:normal}
+.toolbar{background:#fff;border-radius:12px;margin:12px 0;padding:8px 12px;display:flex;align-items:center;gap:8px;font-size:12px}
+.toolbar .b{border:1px solid #d5dbe1;border-radius:7px;padding:6px 10px;font-size:13px}.toolbar .b.on{background:#11171d;color:#fff}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.grid{display:grid;grid-template-columns:600px 1fr;gap:14px}
+.card{background:#fff;border-radius:12px;padding:14px 16px}
+.agent{height:1080px}
+.agent h3{margin:0 0 4px;font-size:16px}.muted{color:#6c7680;font-size:11.5px}
+.bubble{border:1px solid #dfe4e8;border-radius:10px;padding:10px 12px;font-size:13px;margin-top:14px;line-height:1.6}
+.bubble.me{background:#11171d;color:#fff;border:0;margin-left:120px}
+.ph{display:flex;justify-content:space-between;align-items:center}
+.ph h2{margin:0;font-size:18px}
+.chip{border:1px solid #d5dbe1;border-radius:7px;padding:6px 10px;font-size:12px;margin-left:6px}
+.sub{font-size:12px;color:#4d5862;margin:6px 0 12px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+.tile{border:1px solid #e3e8ec;border-radius:10px;padding:10px 12px}
+.tile small{font-size:11px;color:#6c7680}.tile b{display:block;font-size:20px;margin-top:4px}.tile span{font-size:11px;color:#6c7680}
+.ng{color:#d63a3a}.ok{color:#1d9a62}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.box{border:1px solid #e3e8ec;border-radius:10px;padding:8px 10px}
+.box h4{margin:2px 0 4px;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:11.5px}th,td{padding:4px 6px;border-bottom:1px solid #eef1f4;text-align:center}th{color:#6c7680;font-weight:600;background:#f7f9fa}
+.tag{display:inline-block;border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:700}
+.tag.ok{background:#e4f6ec}.tag.ng{background:#fde8e8}
+.legend{font-size:11px;color:#55606a;display:flex;gap:14px;flex-wrap:wrap;margin-top:6px}
+.example{font-size:10px;background:#fff4d6;color:#8a6200;border-radius:4px;padding:1px 6px;margin-left:6px;font-weight:700}
+</style></head><body><div class="app">
+<div class="eyebrow">MANUFACTURING INTELLIGENCE</div><h1>손대쉬 / EASY DASH</h1>
+<div class="flow"><div class="t"><b>제조 공정 흐름</b><span>단계를 누르면 그래프가 좁혀집니다</span></div>
+<div class="step"><small>00</small><b>전체 흐름</b><span>원소재부터 검사·출하까지</span></div><i>⇄</i>
+<div class="step"><small>01</small><b>BB / 사출</b><span>보빈·케이스 성형</span></div><i>⇄</i>
+<div class="step"><small>02</small><b>BS / 스티칭</b><span>리드핀 삽입</span></div><i>⇄</i>
+<div class="step"><small>03</small><b>BA / 보빈아세이</b><span>권선·용접</span></div><i>⇄</i>
+<div class="step on"><small>04</small><b>CA / 코일아세이</b><span>코일 조립 · 초품 위치도</span></div><i>⇄</i>
+<div class="step"><small>05</small><b>최종검사</b><span>검사·합격수량</span></div><i>⇄</i>
+<div class="step"><small>06</small><b>출하</b><span>출하수량</span></div></div>
+<div class="toolbar"><span class="muted">제품군</span><b style="font-size:15px;margin-right:8px">IV · OV · HSV</b><span class="muted">모델</span>
+<span class="b on">전체</span><span class="b"><i class="dot" style="background:#111923"></i>IV</span><span class="b"><i class="dot" style="background:#d7a400"></i>OV</span><span class="b"><i class="dot" style="background:#2f6fd6"></i>HSV</span>
+<span style="flex:1"></span><span class="muted">표시 구간</span><span class="b">2026-08-15</span>~<span class="b">2026-08-21</span><span class="b">7일</span></div>
+<div class="grid">
+<div class="card agent"><h3>제조 AI Agent</h3><div class="muted">답변은 AI(Claude)가 생성합니다 · 숫자는 mqi DB 조회 결과만 씁니다.</div>
+<div class="bubble me">8/21 초품 위치도 어땠어?</div>
+<div class="bubble">8/21 CA 초품 위치도입니다 (A1-3 판정 기준: 정상 ≤0.35 · 경계 ≤0.40 · 불량 &gt;0.40).<br>· <b>IV</b>: 12점 중 불량 2 — 좌핀 #5 <b>0.403</b>, 우핀 #3 <b>0.426</b><br>· OV·HSV: (예시 데이터)<br>오른쪽 CA 화면이 <b>8/21</b> 로 맞춰졌습니다. 이 초품은 8/21 IV CA 주간 실행에 연결되어 있어 LOT 흐름 보기로 바로 이어집니다.<br><span class="muted">근거: mqi.quality_check · mqi.measurement</span></div>
+</div>
+<div class="card">
+<div class="ph"><h2>CA / 코일아세이 · 초품 핀 위치도</h2><div><span class="chip">LOT 흐름 보기</span><span class="chip">측정 이력</span><span class="chip">도움말 ⓘ</span></div></div>
+<div class="sub">선택일 <b>2026-08-21</b> · 모델 <b>전체</b> · 초품 &nbsp;|&nbsp; 판정(A1-3): <b style="color:#0ca30c">정상 ≤0.35</b> · <b style="color:#d9940a">경계 ≤0.40</b> · <b style="color:#d03b3b">불량 &gt;0.40</b> (X·Y 단독·종합 중 나쁜 값)</div>
+<div class="tiles">
+<div class="tile"><small>측정</small><b>36점</b><span>IV 12 · OV 12 · HSV 12</span></div>
+<div class="tile"><small>최대 위치도</small><b class="ng">0.426</b><span>IV 우핀 #3</span></div>
+<div class="tile"><small>판정</small><b style="font-size:16px"><span style="color:#0ca30c">정상 32</span> · <span style="color:#d9940a">경계 1</span> · <span style="color:#d03b3b">불량 3</span></b><span>A1-3 3단계</span></div>
+<div class="tile"><small>CA 실행 연결</small><b style="font-size:16px">3 / 3 모델</b><span>8/21 주간 · 날짜·모델 1건 일치</span></div>
+</div>
+<div class="box" style="padding:6px"><canvas id="pin" style="width:100%;display:block"></canvas></div>
+<div class="legend"><span><i class="dot" style="background:#111923"></i>IV</span><span><i class="dot" style="background:#e7ad00"></i>OV</span><span><i class="dot" style="background:#2679d8"></i>HSV</span><span><b style="color:#391313">✕</b> 불량 (점 위 X)</span><span style="color:#0ca30c">┅ SPEC ⌀0.35</span><span style="color:#f59e0b">┅ 관리기준 ⌀0.40</span><span style="color:#d24">┅ 고정 표시범위 = 위치도 0.7 (±0.35 mm)</span><span class="example">IV 는 원천값 · OV·HSV 는 예시값</span></div>
+<div class="two" style="margin-top:10px">
+<div class="box"><h4>날짜별 초품 최대 위치도 <span class="example">8/21 IV 외 예시값</span></h4><svg id="T" width="100%" viewBox="0 0 380 200"></svg>
+<div class="legend"><span><i class="dot" style="background:#111923"></i>IV</span><span><i class="dot" style="background:#e7ad00"></i>OV</span><span><i class="dot" style="background:#2679d8"></i>HSV</span><span style="color:#0ca30c">┅ 0.35</span><span style="color:#f59e0b">┅ 0.40</span><span>점 누르면 위 그림이 그 날짜로</span></div></div>
+<div class="box"><h4>시료별 측정값 · IV 8/21 (원천)</h4><table id="tb"><tr><th>NO</th><th>좌 X</th><th>좌 Y</th><th>좌 위치도</th><th>우 X</th><th>우 Y</th><th>우 위치도</th></tr></table></div>
+</div>
+</div></div></div>
+<script>
+const NOM={x:2.1,y:12.0},SPEC=0.35,CTRL=0.40,RANGE=0.35; // RANGE 고정: 날짜·모델·데이터와 무관
+const COLOR={IV:'#111923',OV:'#e7ad00',HSV:'#2679d8'};
+const iv=[[1,2.138,12.086,2.128,12.07],[2,2.069,12.004,2.096,11.903],[3,2.004,11.933,2.217,12.178],[4,2.007,11.977,2.167,12.118],[5,2.276,11.902,1.973,11.906],[6,2.032,11.884,2.206,11.974]];
+// 예시값(OV·HSV)
+const ov=[[1,2.06,12.05,2.15,12.02],[2,2.12,11.95,2.08,12.09],[3,2.17,12.06,2.27,12.07],[4,2.04,12.10,2.11,11.94],[5,2.09,11.98,2.19,12.11],[6,2.15,12.03,2.05,12.06]];
+const hsv=[[1,2.03,11.96,2.13,12.08],[2,2.11,12.07,2.02,12.03],[3,1.98,12.09,2.16,11.96],[4,2.08,11.92,2.09,12.12],[5,2.14,12.01,1.92,11.88],[6,2.05,12.04,2.12,11.99]];
+const judge=v=>v<=SPEC?'정상':v<=CTRL?'경계':'불량',rank={정상:0,경계:1,불량:2};
+function evalPt(x,y){const dx=x-NOM.x,dy=y-NOM.y,s=[judge(2*Math.abs(dx)),judge(2*Math.abs(dy)),judge(2*Math.hypot(dx,dy))];return{dx,dy,xy:2*Math.hypot(dx,dy),status:s.sort((a,b)=>rank[b]-rank[a])[0]}}
+const pts=[];for(const [m,rows] of [['IV',iv],['OV',ov],['HSV',hsv]])for(const r of rows){pts.push({model:m,side:'좌',no:r[0],...evalPt(r[1],r[2])});pts.push({model:m,side:'우',no:r[0],...evalPt(r[3],r[4])})}
+console.log(JSON.stringify(pts.reduce((a,p)=>(a[p.status]=(a[p.status]||0)+1,a),{})));
+// ── A1-3 drawPinDetail 이식 (스케일만 고정, 색은 모델색) ──
+const W=1400,H=700,c=document.getElementById('pin');c.width=W;c.height=H;const d=c.getContext('2d');
+d.fillStyle='#fbfbf9';d.fillRect(0,0,W,H);
+function dashed(cx,cy,r,col,w,dash){d.save();d.beginPath();d.arc(cx,cy,r,0,Math.PI*2);d.setLineDash(dash);d.strokeStyle=col;d.lineWidth=w;d.stroke();d.restore()}
+function housing(cx,cy,r){d.save();d.strokeStyle='#252525';d.lineWidth=4;d.fillStyle='#fbfbf9';d.beginPath();d.arc(cx,cy,r,0,Math.PI*2);d.fill();d.stroke();d.beginPath();d.moveTo(cx-r*.78,cy+r*.48);d.lineTo(cx-r*.78,cy+r*.83);d.lineTo(cx+r*.78,cy+r*.83);d.lineTo(cx+r*.78,cy+r*.48);d.stroke();d.restore()}
+function axes(cx,cy,r){d.save();d.strokeStyle='rgba(20,20,20,.25)';d.lineWidth=1.5;d.setLineDash([7,7]);d.beginPath();d.moveTo(cx-r,cy);d.lineTo(cx+r,cy);d.moveTo(cx,cy-r);d.lineTo(cx,cy+r);d.stroke();d.setLineDash([]);d.strokeStyle='rgba(20,20,20,.72)';d.lineWidth=2;d.beginPath();d.moveTo(cx-14,cy);d.lineTo(cx+14,cy);d.moveTo(cx,cy-14);d.lineTo(cx,cy+14);d.stroke();d.restore()}
+function point(x,y,p,col,R){d.save();if(p.status==='불량'){d.beginPath();d.arc(x,y,Math.max(5,R-2),0,Math.PI*2);d.fillStyle=col;d.globalAlpha=.85;d.fill();d.globalAlpha=1;d.strokeStyle='#fff';d.lineWidth=1.5;d.stroke();d.strokeStyle='#391313';d.lineWidth=3.5;const q=R+5;d.beginPath();d.moveTo(x-q,y-q);d.lineTo(x+q,y+q);d.moveTo(x+q,y-q);d.lineTo(x-q,y+q);d.stroke()}else{d.beginPath();d.arc(x,y,R,0,Math.PI*2);d.fillStyle=col;d.globalAlpha=.92;d.fill();d.globalAlpha=1;d.strokeStyle='#fff';d.lineWidth=2.2;d.stroke()}d.restore()}
+const cy=345,L=445,Rr=955,hR=235,pR=170,k=pR/RANGE;
+d.save();d.strokeStyle='#202020';d.lineWidth=5;d.beginPath();d.arc(700,-470,780,.72,2.42);d.stroke();d.beginPath();d.arc(700,1025,860,3.88,5.55);d.stroke();d.strokeStyle='rgba(20,20,20,.42)';d.lineWidth=2;d.setLineDash([10,7,2,7]);d.beginPath();d.moveTo(700,30);d.lineTo(700,660);d.stroke();d.restore();
+housing(L,cy,hR);housing(Rr,cy,hR);
+d.save();d.strokeStyle='#252525';d.lineWidth=4;d.beginPath();d.moveTo(L+hR*.82,cy-45);d.lineTo(700,cy-105);d.lineTo(Rr-hR*.82,cy-45);d.lineTo(Rr-hR*.82,cy+190);d.lineTo(L+hR*.82,cy+190);d.closePath();d.stroke();d.restore();
+for(const [side,cx] of [['좌',L],['우',Rr]]){const sp=pts.filter(p=>p.side===side);axes(cx,cy,pR+28);dashed(cx,cy,SPEC/2*k,'#0ca30c',3,[10,7]);dashed(cx,cy,CTRL/2*k,'#f59e0b',3,[10,7]);dashed(cx,cy,pR,'rgba(210,50,50,.48)',2.3,[7,7]);
+ // 눈금(고정): 0.1 mm
+ d.save();d.fillStyle='rgba(20,20,20,.45)';d.font='13px sans-serif';d.textAlign='center';for(const v of [-0.3,-0.2,-0.1,0.1,0.2,0.3]){d.fillText((v>0?'+':'')+v.toFixed(1),cx+v*k,cy+22)}d.textAlign='left';for(const v of [-0.3,-0.2,-0.1,0.1,0.2,0.3]){d.fillText((v>0?'+':'')+v.toFixed(1)+(v>0?'':''),cx+8,cy+v*k+4)}d.restore();
+ for(const p of sp){const r=Math.hypot(p.dx,p.dy),f=r>RANGE?RANGE/r:1;point(cx+p.dx*k*f,cy+p.dy*k*f,p,COLOR[p.model],10)}
+ for(const p of sp.filter(p=>p.status!=='정상')){d.save();d.font='700 15px sans-serif';d.fillStyle=p.status==='불량'?'#d03b3b':'#b77700';d.fillText(`${p.model} #${p.no} ${p.xy.toFixed(3)}`,cx+p.dx*k+16,cy+p.dy*k-14);d.restore()}
+ d.save();d.fillStyle='#111';d.textAlign='center';d.font='700 34px sans-serif';d.fillText(side==='좌'?'좌핀':'우핀',cx,632);d.font='16px sans-serif';d.fillStyle='rgba(20,20,20,.62)';d.fillText(`중심 대비 ΔX / ΔY 확대 · ${sp.length}점`,cx,662);d.restore()}
+d.save();d.fillStyle='rgba(20,20,20,.75)';d.font='600 18px sans-serif';d.fillText('핀 중심(+)을 기준으로 실제 측정 편차를 확대 표시',42,48);d.font='15px sans-serif';d.fillStyle='rgba(20,20,20,.55)';d.fillText('SPEC ⌀0.35 / 관리기준 ⌀0.40 mm · 표시범위 고정: 위치도 0.7 (±0.35 mm)',42,75);d.restore();
+// table
+const tb=document.getElementById('tb'),SC={정상:'#0ca30c',경계:'#d9940a',불량:'#d03b3b'};for(const r of iv){const a=evalPt(r[1],r[2]),b=evalPt(r[3],r[4]);const t=v=>`<span class="tag" style="background:${SC[v.status]}1f;color:${SC[v.status]}">${v.xy.toFixed(3)}${v.status==='불량'?' ✕':''}</span>`;tb.innerHTML+=`<tr><td>${r[0]}</td><td>${r[1].toFixed(3)}</td><td>${r[2].toFixed(3)}</td><td>${t(a)}</td><td>${r[3].toFixed(3)}</td><td>${r[4].toFixed(3)}</td><td>${t(b)}</td></tr>`}
+// trend (fixed y 0~0.6)
+const days=['08/15','08/16','08/18','08/19','08/20','08/21'],ser={IV:[0.24,0.27,0.22,0.29,0.31,0.426],OV:[0.21,0.19,0.25,0.23,0.2,0.37],HSV:[null,0.28,0.3,null,0.27,0.43]};
+let t='';const X=i=>45+i*62,Y=v=>178-v*231;for(const v of [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7]){t+=`<line x1="40" y1="${Y(v)}" x2="370" y2="${Y(v)}" stroke="#f0f2f4"/><text x="34" y="${Y(v)+3}" font-size="9" fill="#8a949e" text-anchor="end">${v.toFixed(1)}</text>`}
+t+=`<line x1="40" y1="${Y(.35)}" x2="370" y2="${Y(.35)}" stroke="#0ca30c" stroke-dasharray="5 4"/><line x1="40" y1="${Y(.4)}" x2="370" y2="${Y(.4)}" stroke="#f59e0b" stroke-dasharray="5 4"/>`;
+days.forEach((dd,i)=>t+=`<text x="${X(i)}" y="194" font-size="9" fill="#8a949e" text-anchor="middle">${dd}</text>`);
+for(const [m,vals] of Object.entries(ser)){const col=COLOR[m];let p='';vals.forEach((v,i)=>{if(v==null)return;p+=(p?'L':'M')+X(i)+' '+Y(v)});t+=`<path d="${p}" fill="none" stroke="${col}" stroke-width="2"/>`;vals.forEach((v,i)=>{if(v==null)return;t+=`<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="${col}" stroke="#fff"/>`;if(v>CTRL)t+=`<path d="M${X(i)-6} ${Y(v)-6}L${X(i)+6} ${Y(v)+6}M${X(i)+6} ${Y(v)-6}L${X(i)-6} ${Y(v)+6}" stroke="#391313" stroke-width="2.2"/>`})}
+t+=`<rect x="${X(5)-16}" y="10" width="32" height="172" fill="#4a8df012" stroke="#4a8df0" stroke-dasharray="3 3"/><text x="${X(5)}" y="8" font-size="9" fill="#2f6fd6" text-anchor="middle">선택일</text>`;
+document.getElementById('T').innerHTML=t;
+</script></body></html>
