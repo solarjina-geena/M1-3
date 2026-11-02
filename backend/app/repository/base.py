@@ -27,6 +27,9 @@ class Repository(ABC):
     def stitching_defect_quantity_status(self, model: str | None, date_from: str | None, date_to: str | None) -> list[dict]: ...
 
     @abstractmethod
+    def defect_quantity_status(self, process: str, model: str | None, date_from: str | None, date_to: str | None) -> list[dict]: ...
+
+    @abstractmethod
     def chain_gaps(self, model: str | None, only_gaps: bool = False) -> list[dict]: ...
 
     @abstractmethod

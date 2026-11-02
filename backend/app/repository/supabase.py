@@ -135,23 +135,32 @@ class SupabaseRepository(Repository):
         return out
 
     def stitching_defect_quantity_status(self, model: str | None, date_from: str | None, date_to: str | None) -> list[dict]:
+        return self.defect_quantity_status("IMEB3_STITCHING", model, date_from, date_to)
+
+    def defect_quantity_status(self, process: str, model: str | None, date_from: str | None, date_to: str | None) -> list[dict]:
         """Count NULL quantities without turning blanks into confirmed zeroes.
 
         The existing aggregate view cannot distinguish NULL within a mixed group.
         Return counts only; raw records and source remarks stay on the server.
         """
+        final = process == "IMEB3_FINAL_INSPECTION"
+        target = "inspection_run" if final else "process_run"
+        date_col = "inspection_date" if final else "work_date"
+        relation = "fk_quality_finding_inspection_run_id_model_id" if final else "fk_quality_finding_process_run_id_model_id"
+        fields = f"{date_col},product_model!inner(model_code)" + ("" if final else ",process!inner(process_code)")
         params: dict[str, Any] = {
-            "select": "quality_finding_id,defect_type!inner(defect_name),process_run!fk_quality_finding_process_run_id_model_id!inner(work_date,process!inner(process_code),product_model!inner(model_code))",
+            "select": f"quality_finding_id,defect_type!inner(defect_name),{target}!{relation}!inner({fields})",
             "record_state": "eq.ACTIVE", "quantity": "is.null",
-            "process_run.process.process_code": "eq.IMEB3_STITCHING",
             "order": "quality_finding_id",
         }
+        if not final:
+            params["process_run.process.process_code"] = f"eq.{process}"
         if model:
-            params["process_run.product_model.model_code"] = f"eq.{model}"
+            params[f"{target}.product_model.model_code"] = f"eq.{model}"
         date_params: dict[str, Any] = {}
-        _date_filter(date_params, "work_date", date_from, date_to)
+        _date_filter(date_params, date_col, date_from, date_to)
         if "and" in date_params:
-            params["process_run.and"] = date_params["and"]
+            params[f"{target}.and"] = date_params["and"]
         counts: dict[str, int] = defaultdict(int)
         offset = 0
         while True:
