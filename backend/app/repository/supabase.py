@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-
 from collections import defaultdict
 from typing import Any
 
@@ -235,6 +234,134 @@ class SupabaseRepository(Repository):
             if len(rows) < page:
                 return out
             off += page
+
+    def injection_condition_rows(self, limit: int = 5000) -> list[dict]:
+        """사출 단계 화면용 조건 시계열(뷰 m13_injection_condition_rows: 기준 SPEC_TARGET + 주야 실측 OBSERVATION)."""
+        out, page, off = [], 1000, 0
+        while len(out) < limit:
+            rows = self.c.select("m13_injection_condition_rows", {"order": "date.asc,id.asc", "offset": str(off)}, limit=min(page, limit - len(out)))
+            out.extend(rows)
+            if len(rows) < page:
+                break
+            off += page
+        # 화면은 처음 만난 순서대로 그래프를 그리므로 체크시트 칸 순서(행 → 열 → 날짜)로 정렬한다.
+        def cell_key(r: dict) -> tuple:
+            m = re.match(r"([A-Z]+)(\d+)$", r.get("source_cell") or "")
+            col = sum((ord(c) - 64) * 26 ** k for k, c in enumerate(reversed(m.group(1)))) if m else 999
+            row = int(m.group(2)) if m else 999
+            return (row, col, r.get("date") or "", r.get("value_role") != "SPEC_TARGET")
+        out.sort(key=cell_key)
+        return out
+
+    # ---------------------------------------------------------------- 사출조건 (설비 DS120-1, 체크시트 → parameter_observation)
+    # 사출 전문가 관점 우선 인자(보빈 중량·치수에 영향이 큰 순서). 화면·AI 창이 같은 정의를 쓴다.
+    INJECTION_FACTORS = [
+        {"rank": 1, "key": "pressure", "title": "사출압력 · 보압",
+         "why": "보압(압력·시간)이 캐비티 보압충전량을 정해 보빈 중량·치수에 가장 직접 작용",
+         "series": ["INJ_PRESS_HOLD1", "INJ_PRESS_S1"]},
+        {"rank": 2, "key": "switchover", "title": "전환위치(V/P) · 쿠션",
+         "why": "충전→보압 전환 시점과 남은 쿠션량이 샷 충전량 편차(미성형·과충전)를 좌우",
+         "series": ["MON_SWITCH_POS_START", "INJ_CUSHION"]},
+        {"rank": 3, "key": "temperature", "title": "온도 (노즐·실린더·금형)",
+         "why": "용융 점도와 수축률을 바꿔 중량·치수에 영향, 변화는 느리게 나타남",
+         "series": ["INJ_TEMP_NZ", "INJ_TEMP_H1", "MOLD_TEMP_FIXED"]},
+    ]
+    INJECTION_LATER = "4순위 사출속도(충전 패턴·외관 영향, 중량 영향 작음) · 5순위 계량(설정 고정, 결과는 쿠션으로 확인)"
+
+    def injection_runs(self) -> list[dict]:
+        """사출 설비 DS120-1 의 실행 순서(뷰 m13_injection_runs). IV·OV·HSV 가 한 설비에서 겹치지 않고 이어진다."""
+        return self.c.select("m13_injection_runs", {"order": "date.asc,shift_code.asc,sequence_no.asc"}, limit=5000)
+
+    def injection_anchor(self, code: str, model: str | None = None) -> dict:
+        """LOT 표기(마킹코드 ZIC / LOT 코드 260903D1 / 날짜) -> 그 LOT 을 만든 보빈(사출) LOT 과 사출 실행.
+        LOT 사슬(m13_lot_chain)을 위로 거슬러 사출 LOT 을 모으고, 사출 실행은 process_run_lot(OUTPUT)으로 찾는다."""
+        resolved = self.resolve_lot_code(code)
+        lc = resolved["lot_code"]
+        params: dict[str, Any] = {"lot_code": f"eq.{lc}"}
+        if model:
+            params["model_code"] = f"eq.{model}"
+        rows = self.c.select("m13_lot_chain", params, limit=1000)
+        if not rows:
+            return {"found": False, "query": code, "lot_code": lc, "resolved": resolved, "injection_lots": []}
+        order = {"IMEB3_CA_PRESS": 0, "IMEB3_WINDING": 1, "IMEB3_STITCHING": 2, "IMEB3_INJECTION": 3}
+        if resolved.get("marking_code"):
+            pref = sorted(rows, key=lambda r: order.get(r["process_code"], 9))  # 마킹코드 = CA 제품 LOT
+        else:
+            pref = sorted(rows, key=lambda r: (r["process_code"] != "IMEB3_INJECTION", order.get(r["process_code"], 9)))
+        start = pref[0]
+        mdl = start["model_code"]
+        inj: dict[str, dict] = {}
+        if start["process_code"] == "IMEB3_INJECTION":
+            inj[start["lot_code"]] = {"lot_code": start["lot_code"], "lot_date": start["lot_date"], "link": "기준 LOT 자체"}
+        else:
+            by_lot: dict[str, list] = defaultdict(list)
+            for r in self.chain_rows(mdl):
+                by_lot[r["lot_id"]].append(r)
+            todo, seen = [start["lot_id"]], set()
+            while todo:
+                lid = todo.pop()
+                if lid in seen:
+                    continue
+                seen.add(lid)
+                for r in by_lot.get(lid, []):
+                    if not r.get("input_lot_id"):
+                        continue
+                    if r["input_process_code"] == "IMEB3_INJECTION":
+                        inj.setdefault(r["input_lot_code"], {"lot_code": r["input_lot_code"], "lot_date": r["input_lot_date"],
+                                                             "link": r.get("in_status") or ""})
+                    else:
+                        todo.append(r["input_lot_id"])
+        runs = [x for x in self.injection_runs() if x["variant"] == mdl]
+        out = []
+        for code_, v in sorted(inj.items(), key=lambda kv: (kv[1]["lot_date"] or "", kv[0])):
+            hit = [x for x in runs if code_ in (x.get("bobbin_lot_code") or "").split("/")]
+            out.append({**v, "process_run_ids": [x["process_run_id"] for x in hit],
+                        "has_conditions": any(x.get("has_conditions") for x in hit)})
+        return {"found": True, "query": code, "lot_code": start["lot_code"], "process_code": start["process_code"], "model": mdl,
+                "resolved": resolved, "injection_lots": out}
+
+    def injection_window(self, code: str | None = None, model: str | None = None, before: int = 4, after: int = 3) -> dict:
+        """사출조건 기록(체크시트 1장의 주/야 = 사출 실행 1건)을 설비 실행 순서로 줄 세우고, 기준 LOT 의 사출 실행 앞 before 건, 뒤 after 건.
+        기준 LOT 이 없으면 데이터가 있는 전체 기간. 우선 인자(INJECTION_FACTORS)와 보빈무게의 실측·SPEC 만 담는다."""
+        rows = [r for r in self.injection_condition_rows() if r["value_role"] == "OBSERVATION"]
+        runs = {x["process_run_id"]: x for x in self.injection_runs()}
+        recs: dict[str, dict] = {}
+        for r in rows:
+            k = r.get("process_run_id") or f"{r['source_sheet']}|{r.get('shift_code')}"
+            run = runs.get(r.get("process_run_id") or "")
+            rec = recs.setdefault(k, {"key": k, "date": r["date"], "shift_code": r.get("shift_code") or "", "variant": r["variant"],
+                                      "process_run_id": r.get("process_run_id"), "sequence_no": (run or {}).get("sequence_no") or 1,
+                                      "bobbin_lot_code": r.get("bobbin_lot_code") or (run or {}).get("bobbin_lot_code"),
+                                      "quantity": (run or {}).get("quantity"), "sheet": r["source_sheet"], "has_conditions": True,
+                                      "run_link": "사출 실행 FK" if r.get("process_run_id") else "사출 실행 기록 없음", "values": {}})
+            rec["values"][r["parameter_code"]] = {"value": r["condition_value"], "raw": r.get("raw_cell_value"),
+                                                  "lo": r.get("spec_lower"), "hi": r.get("spec_upper"), "target": r.get("spec_target"),
+                                                  "unit": r.get("unit_context"), "cell": r.get("source_cell"), "name": r["series_key"],
+                                                  "spec_revision": r.get("spec_revision"), "spec_status": r.get("spec_status")}
+        anchor = self.injection_anchor(code, model) if code else None
+        anchor_keys: list[str] = []
+        if anchor and anchor.get("found"):
+            for lot in anchor["injection_lots"]:
+                for rid in lot["process_run_ids"]:
+                    if rid not in recs and rid in runs:  # 조건표가 없는 사출 실행도 자리는 둔다
+                        x = runs[rid]
+                        recs[rid] = {"key": rid, "date": x["date"], "shift_code": x["shift_code"], "variant": x["variant"],
+                                     "process_run_id": rid, "sequence_no": x.get("sequence_no") or 1, "bobbin_lot_code": x.get("bobbin_lot_code"),
+                                     "quantity": x.get("quantity"), "sheet": None, "has_conditions": False,
+                                     "run_link": "조건표 없음", "values": {}}
+                    if rid in recs:
+                        anchor_keys.append(rid)
+        seq = sorted(recs.values(), key=lambda r: (r["date"], r["shift_code"] != "D", r["sequence_no"], r["variant"]))
+        for r in seq:
+            r["is_anchor"] = r["key"] in anchor_keys
+        if anchor_keys:
+            idx = [i for i, r in enumerate(seq) if r["is_anchor"]]
+            seq = seq[max(0, idx[0] - before): idx[-1] + after + 1]
+        keep = {c for f in self.INJECTION_FACTORS for c in f["series"]} | {"BOBBIN_WEIGHT"}
+        for r in seq:
+            r["values"] = {k: v for k, v in r["values"].items() if k in keep}
+        return {"anchor": anchor, "window": {"before": before, "after": after, "applied": bool(anchor_keys)},
+                "equipment": "DS120-1", "factors": self.INJECTION_FACTORS, "later_factors": self.INJECTION_LATER, "records": seq}
 
     def recent_runs(self, model: str | None, limit: int = 50) -> list[dict]:
         params: dict[str, Any] = {"order": "work_date.desc"}

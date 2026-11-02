@@ -301,10 +301,15 @@ def chat(body: ChatIn):
     _conversations[cid] = (history + [{"role": "user", "content": q}, {"role": "assistant", "content": out.get("answer", "")}])[-20:]
     if len(_conversations) > 500:
         _conversations.pop(next(iter(_conversations)))
-    vm = re.search(r"(HSV|OV|IV)", q.upper())
+    vm = re.search(r"\b(HSV|OV|IV)\b", q.upper())
+    ctx: dict[str, Any] = {"variant": vm.group(1)} if vm else {}
+    # 사출조건 도구를 썼으면 같은 LOT 기준으로 사출 단계 그래프를 열도록 알려 준다.
+    inj = [c for c in out.get("tool_calls", []) if c.get("tool") == "get_injection_conditions" and not c.get("error")]
+    if inj:
+        ctx["injection"] = {"lot": inj[-1]["input"].get("lot_code") or "", "model": inj[-1]["input"].get("model") or ""}
     return {**out, "conversation_id": cid, "storage": "supabase",
             "ai_provider": "ANTHROPIC_CLAUDE" if out.get("model") else "FALLBACK_AI_ERROR",
-            "graph_context": {"variant": vm.group(1)} if vm else {}}
+            "graph_context": ctx}
 
 
 # ---------------------------------------------------------------- 전체흐름(피시본) 대시보드 데이터 (M1-2 화면 계약 그대로, 데이터만 mqi)
@@ -322,5 +327,12 @@ def workbook_evidence():
 
 
 @router.get("/process-conditions")
-def process_conditions(limit: int = 5000):
-    return []   # 사출조건(parameter_observation) 적재 전. 적재되면 여기서 뷰로 돌려준다
+def process_conditions(limit: int = Query(5000, ge=1, le=5000)):
+    """사출(BB) 단계 클릭 화면의 조건 시계열. 대시보드의 다른 조회와 같이 공개 읽기(팀원 모두 열람)."""
+    return _wrap(_repo().injection_condition_rows, limit)
+
+
+@router.get("/process-conditions/window")
+def process_condition_window(lot: Optional[str] = Query(None, max_length=40), model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$")):
+    """사출 단계 화면의 시계열 창. lot 을 주면 그 LOT 을 만든 사출 실행 앞 4건 · 뒤 3건, 없으면 데이터가 있는 전체 기간."""
+    return _wrap(_repo().injection_window, lot or None, model)
