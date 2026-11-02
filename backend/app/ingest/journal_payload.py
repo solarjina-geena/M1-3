@@ -166,6 +166,11 @@ class JournalPayload(BaseModel):
             if not i.get("process"):
                 i["process"] = UPSTREAM_OF.get(self.process)
         d["inputs"] = [i for i in d["inputs"] if i.get("process") and (i.get("lot_date") or i.get("lot_code"))]
+        if self.process == "IMEB3_CA_PRESS" and not any(i.get("process") == "IMEB3_WINDING" for i in d["inputs"]):
+            # 조립일보 한 장에 권선(BA)·압입(CA)이 같이 적히고, CA 는 같은 장의 BA 산출물을 압입한다(변환기와 같은 규칙).
+            # 같은 날·같은 모델 BA LOT 이 투입 → 사슬이 CA 에서 끊기지 않는다. 날짜 추정이 아니라 양식 구조에 따른 연결이다.
+            d["inputs"].append({"component": None, "process": "IMEB3_WINDING", "lot_date": self.work_date, "lot_code": None,
+                                "raw": "같은 조립일보 BA", "note": "같은 조립일보의 권선(BA) LOT → 압입(CA) 투입(양식 규칙)"})
         for m in d["materials"]:
             m["material"] = MATERIAL_CODES.get(str(m["material"]).upper(), m["material"])
             m["lot_date"] = norm_date(m.get("lot_date") or m.get("raw"), self.work_date)
