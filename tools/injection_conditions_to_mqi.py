@@ -15,6 +15,10 @@
 - 보빈무게: 체크시트 '기준' 줄 AA36 에 적힌 값은 날마다 다른 실측값이라 주간 실측으로, AA38 '야간 보빈무게: x g' 는
   야간 실측으로 넣는다(원문은 raw_value_text).
 
+- 적재 후 순서: tools/injection_conditions_link_fk.sql(설비 사용·실행 FK·보빈 중량 SPEC) → tools/injection_conditions_provenance.sql
+  (remark 의 시트·셀·주야·모델을 팀 출처 테이블 source_location/extracted_field/field_review/field_provenance_link 로 옮기고 remark 정리).
+  탭 이름 = 보빈(사출) LOT(사용자 규칙), 야간 행 = 같은 날 N1 LOT(사람 확인 전).
+
   py tools/injection_conditions_to_mqi.py [엑셀경로] --runs runs.json
   runs.json = [{"process_run_id":..., "work_date":"2026-08-11", "fs":"SRC-...-D1-..."}] (IV 사출 process_run 목록)
 """

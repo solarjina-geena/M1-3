@@ -51,7 +51,8 @@ class Repository(ABC):
     def injection_anchor(self, code: str, model: str | None = None) -> dict: ...
 
     @abstractmethod
-    def injection_window(self, code: str | None = None, model: str | None = None, before: int = 4, after: int = 3) -> dict: ...
+    def injection_window(self, code: str | None = None, model: str | None = None, before: int = 4, after: int = 3,
+                         all_params: bool = False) -> dict: ...
 
     # ---- 쓰기 (모두 CANDIDATE 로 들어가고, 사람 확인 시 CONFIRMED)
     @abstractmethod

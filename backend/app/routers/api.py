@@ -338,6 +338,7 @@ def process_conditions(limit: int = Query(5000, ge=1, le=5000)):
 
 
 @router.get("/process-conditions/window")
-def process_condition_window(lot: Optional[str] = Query(None, max_length=40), model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$")):
-    """사출 단계 화면의 시계열 창. lot 을 주면 그 LOT 을 만든 사출 실행 앞 4건 · 뒤 3건, 없으면 데이터가 있는 전체 기간."""
-    return _wrap(_repo().injection_window, lot or None, model)
+def process_condition_window(lot: Optional[str] = Query(None, max_length=40), model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"),
+                             all: bool = False):
+    """사출 단계 화면의 LOT 순서 시계열. lot 을 주면 그 LOT 을 만든 사출 LOT 앞 4건 · 뒤 3건, 없으면 데이터가 있는 전체. all=true 면 전 조건 항목."""
+    return _wrap(_repo().injection_window, lot or None, model, 4, 3, all)
