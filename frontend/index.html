@@ -192,9 +192,9 @@ main>.agent{
 <aside class="agent"><div class="agent-head"><div><span class="ai">AI</span><div><b>제조 AI Agent</b><small>답변은 AI(Claude)가 생성합니다 · 숫자는 mqi DB 조회 결과만 씁니다.</small></div></div><button id="newChat">＋ 새 대화</button></div>
 <div class="chat-input-top"><form id="chatForm"><textarea id="question" rows="1" placeholder="날짜·모델·공정·불량을 질문하세요 · Enter 전송 / Shift+Enter 줄바꿈"></textarea><button type="submit">보내기</button></form></div>
 
-<div class="agent-tabs"><button class="agent-tab active" data-tab="chatTab">대화</button><button class="agent-tab" data-tab="reviewTab">확인 필요 <span class="badge" id="reviewBadge">…</span></button><button class="agent-tab" data-tab="verifiedTab">확인·판단 이력</button></div>
-<div id="reviewTab" class="review-panel hidden"><div class="review-item"><small>끊긴 LOT 사슬을 불러오는 중…</small></div></div>
-<div id="verifiedTab" class="review-panel hidden"><div class="review-item"><small>불러오는 중…</small></div></div>
+<div class="agent-tabs"><button class="agent-tab active" data-tab="chatTab">대화</button><button class="agent-tab" data-tab="reviewTab">확인 필요 <span class="badge" id="judgeBadge" title="사람 판단 필요">…</span> <span class="badge" id="reviewBadge" title="끊긴 LOT 사슬">…</span></button><button class="agent-tab" data-tab="verifiedTab">확인·판단 이력</button></div>
+<div id="reviewTab" class="review-panel hidden"><div id="judgeQueue"><div class="review-item"><small>판단 필요 항목을 불러오는 중…</small></div></div><div id="chainGaps"><div class="review-item"><small>끊긴 LOT 사슬을 불러오는 중…</small></div></div></div>
+<div id="verifiedTab" class="review-panel hidden"><div id="judgeLog"><div class="review-item"><small>판단 이력을 불러오는 중…</small></div></div><div id="chainFull"><div class="review-item"><small>불러오는 중…</small></div></div></div>
 <div id="chatTab"><div class="history-head"><b>대화 기록</b><button id="toggleHistory">대화 목록 펼치기 ▾</button></div><div id="historyList" class="history-list hidden"></div>
 <div id="chat" class="chat"></div>
 <div class="examples"><span>질문 예시</span><button>IV ZIC LOT 추적해줘</button><button>OV 검사 제품 LOT에서 앞공정까지 보여줘</button><button>HSV 보빈 LOT 추적해줘</button></div></div>
@@ -560,10 +560,11 @@ restoreLocalDashboard();render();renderChat();autoGrow();const lastUser=[...curr
 // ---- M1-3: 확인 필요(끊긴 LOT 사슬)·확인 이력 탭과 팀 OCR 앱 링크를 mqi 에서 채운다
 (async()=>{try{const cfg=await (await fetch(API_BASE+'/api/auth/config')).json();if(cfg.team_ocr_url){const a=$('#teamOcrLink');a.href=cfg.team_ocr_url;a.hidden=false}}catch(e){}
  try{const gaps=await (await fetch(API_BASE+'/api/lots/gaps')).json();const esc=v=>String(v??'—').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));const broken=gaps.filter(g=>Number(g.depth)<4),full=gaps.filter(g=>Number(g.depth)>=4);$('#reviewBadge').textContent=broken.length;
-  $('#reviewTab').innerHTML=(broken.length?broken.slice(0,12).map(g=>`<div class="review-item"><b>${esc(g.ca_date)} ${esc(g.model_code)} · CA LOT ${esc(g.ca_lot)}</b><small>사슬 깊이 ${esc(g.depth)}/4 · 다음에 넣을 기록: ${esc(g.first_gap)}</small><div class="review-actions"><button data-q="${esc(g.model_code)} ${esc(g.ca_date)}">그래프 보기</button></div></div>`).join('')+(broken.length>12?`<div class="review-item"><small>외 ${broken.length-12}건 · 전체 목록은 표·그래프 보기</small></div>`:''):'<div class="review-item"><small>끊긴 사슬 없음</small></div>');
-  $('#reviewTab').querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{applyQuestionGraphScope(b.dataset.q);render();$$('.agent-tab')[0].click()});
-  $('#verifiedTab').innerHTML=`<div class="review-item"><b>완전 사슬 ${full.length} / ${gaps.length} CA 제품 LOT</b><small>수지→사출→스티칭→권선→압입 연결이 모두 이어진 LOT · 자동 연결은 CANDIDATE, 사람 확인은 CONFIRMED(관리 화면)</small></div>`+full.slice(0,10).map(g=>`<div class="review-item"><b>${esc(g.ca_date)} ${esc(g.model_code)} · ${esc(g.ca_lot)}</b><small>BA ${esc(g.ba_lot)} · 스티칭 ${esc(g.sti_lot)} · 사출 ${esc(g.inj_lot)} · 수지 ${esc(g.resin_lots)}</small></div>`).join('')}catch(e){console.warn('[review tabs]',e)}})();
-</script></body></html>
+  $('#chainGaps').innerHTML='<div class="review-item"><b>끊긴 LOT 사슬 '+broken.length+'건</b></div>'+(broken.length?broken.slice(0,12).map(g=>`<div class="review-item"><b>${esc(g.ca_date)} ${esc(g.model_code)} · CA LOT ${esc(g.ca_lot)}</b><small>사슬 깊이 ${esc(g.depth)}/4 · 다음에 넣을 기록: ${esc(g.first_gap)}</small><div class="review-actions"><button data-q="${esc(g.model_code)} ${esc(g.ca_date)}">그래프 보기</button></div></div>`).join('')+(broken.length>12?`<div class="review-item"><small>외 ${broken.length-12}건 · 전체 목록은 표·그래프 보기</small></div>`:''):'<div class="review-item"><small>끊긴 사슬 없음</small></div>');
+  $('#chainGaps').querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{applyQuestionGraphScope(b.dataset.q);render();$$('.agent-tab')[0].click()});
+  $('#chainFull').innerHTML=`<div class="review-item"><b>완전 사슬 ${full.length} / ${gaps.length} CA 제품 LOT</b><small>수지→사출→스티칭→권선→압입 연결이 모두 이어진 LOT · 자동 연결은 CANDIDATE, 사람 확인은 CONFIRMED(관리 화면)</small></div>`+full.slice(0,10).map(g=>`<div class="review-item"><b>${esc(g.ca_date)} ${esc(g.model_code)} · ${esc(g.ca_lot)}</b><small>BA ${esc(g.ba_lot)} · 스티칭 ${esc(g.sti_lot)} · 사출 ${esc(g.inj_lot)} · 수지 ${esc(g.resin_lots)}</small></div>`).join('')}catch(e){console.warn('[review tabs]',e)}})();
+</script><script src="judgment.js"></script>
+</body></html>
 
 
 

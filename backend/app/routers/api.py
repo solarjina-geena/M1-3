@@ -194,7 +194,7 @@ def journal_preview(payload: JournalPayload):
 
 STAGE_LABEL = {"IMEB3_INJECTION": "사출", "IMEB3_STITCHING": "스티칭", "IMEB3_WINDING": "권선(BA)", "IMEB3_CA_PRESS": "압입(CA)",
                "IMEB3_FINAL_INSPECTION": "최종검사"}
-VIA_LABEL = {"form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기"}
+VIA_LABEL = {"judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기"}
 
 
 def _actor(who: dict) -> str:
@@ -430,3 +430,100 @@ def process_condition_window(lot: Optional[str] = Query(None, max_length=40), mo
                              all: bool = False):
     """사출 단계 화면의 LOT 순서 시계열. lot 을 주면 그 LOT 을 만든 사출 LOT 앞 4건 · 뒤 3건, 없으면 데이터가 있는 전체. all=true 면 전 조건 항목."""
     return _wrap(_repo().injection_window, lot or None, model, 4, 3, all)
+
+
+# ---------------------------------------------------------------- 사람 판단 기록 ('확인 필요' 탭의 판단 카드)
+KIND_DECISIONS = {"READ_VALUE": {"VERIFIED", "CORRECTED", "REJECTED"}, "INSPECTION_LOT": {"CONFIRMED", "UNRESOLVED", "VOID"},
+                  "EVENT": {"VERIFIED", "REJECTED", "VOID"}, "POSITION": {"VERIFIED", "CORRECTED", "NEEDS_REVIEW"}}
+BASIS_CODES = {"EXTRACTION_ERROR", "SOURCE_TYPO", "FORMAT_ERROR", "INCONSISTENT_SOURCE", "OTHER"}   # field_review.review_reason_code 허용값
+_PII = re.compile(r"[0-9A-Za-z._%+-]+@[0-9A-Za-z.-]+\.[A-Za-z]{2,}|01[016789][- ]?\d{3,4}[- ]?\d{4}")
+
+
+class ImageRef(BaseModel):
+    sha256: str
+    name: str = ""
+
+
+class JudgmentIn(BaseModel):
+    item_ids: list[str]                      # 1~20건(일괄 판단은 같은 결정·메모)
+    decision: str
+    note: str
+    value: Optional[str] = None              # 정정값(판독값·이벤트 설명) / 위치도는 '좌우|시료|축|값'
+    lot_code: Optional[str] = None           # 검사 LOT → CA LOT 연결 시 사람이 적은 LOT 코드
+    basis_code: Optional[str] = None
+    images: list[ImageRef] = []
+    ai_suggestion: Optional[dict[str, Any]] = None
+
+
+def _check_judgment(body: JudgmentIn) -> None:
+    if not 1 <= len(body.item_ids) <= 20:
+        raise HTTPException(400, "판단은 한 번에 1~20건")
+    note = body.note.strip()
+    if not 5 <= len(note) <= 500:
+        raise HTTPException(400, "메모는 5~500자")
+    if _PII.search(note):
+        raise HTTPException(400, "메모에 이메일·전화번호 형태는 쓸 수 없습니다(실명도 적지 마세요)")
+    if len(body.images) > 3 or any(not re.fullmatch(r"[0-9a-f]{64}", i.sha256) for i in body.images):
+        raise HTTPException(400, "근거 이미지는 SHA-256 해시로 3개까지")
+    if body.basis_code and body.basis_code not in BASIS_CODES:
+        raise HTTPException(400, f"사유 코드는 {sorted(BASIS_CODES)} 중 하나")
+    kinds = {i.split(":", 1)[0] for i in body.item_ids}
+    if len(kinds) != 1 or not kinds <= set(KIND_DECISIONS):
+        raise HTTPException(400, "일괄 판단은 같은 종류끼리만")
+    if body.decision not in KIND_DECISIONS[kinds.pop()]:
+        raise HTTPException(400, "이 종류에 쓸 수 없는 결정")
+
+
+@router.get("/review-queue")
+def review_queue(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"), stage: Optional[str] = Query(None, max_length=40),
+                 lot: Optional[str] = Query(None, max_length=40)):
+    """확인 필요 목록(공개 읽기). 판단 저장은 로그인 필요."""
+    return _wrap(_repo().review_queue, model, stage, lot)
+
+
+@router.get("/judgments")
+def judgments(lot: Optional[str] = Query(None, max_length=40), kind: Optional[str] = Query(None, max_length=20),
+              model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"), limit: int = Query(200, ge=1, le=1000)):
+    """판단 이력. 누가 판단했는지(actor)는 화면에 내보내지 않는다."""
+    rows = _wrap(_repo().judgment_log, lot, kind, model, limit)
+    for r in rows:
+        r.pop("actor_ref", None)
+    return rows
+
+
+@router.post("/judgment")
+def judgment_save(body: JudgmentIn, authorization: Optional[str] = Header(None)):
+    who = _admin(authorization)
+    _check_judgment(body)
+    repo = _repo()
+    results = []
+    for item_id in body.item_ids:
+        p = body.model_dump(exclude={"item_ids"})
+        p.update(item_id=item_id, note=body.note.strip(), actor=_actor(who), images=[i.model_dump() for i in body.images])
+        try:
+            results.append({"item_id": item_id, "ok": True, "result": repo.judgment_save(p)})
+        except SupabaseError as e:
+            results.append({"item_id": item_id, "ok": False, "error": str(e)})
+    return {"saved": sum(r["ok"] for r in results), "failed": sum(not r["ok"] for r in results), "results": results}
+
+
+_suggest_calls: dict[str, list[float]] = {}
+
+
+@router.post("/judgment/suggest")
+def judgment_suggest(body: dict[str, Any], authorization: Optional[str] = Header(None)):
+    """판단 카드의 'AI 제안': 같은 종류의 지난 판단을 근거로 Claude 가 결정 하나를 제안(저장은 사람이 결정). 사용자당 분당 5회."""
+    import time
+    from ..agent.claude_agent import suggest_judgment
+    who = _admin(authorization)
+    key = who.get("email") or who.get("via") or "anon"
+    now = time.time()
+    recent = [t for t in _suggest_calls.get(key, []) if now - t < 60]
+    if len(recent) >= 5:
+        raise HTTPException(429, "AI 제안은 1분에 5번까지입니다")
+    _suggest_calls[key] = recent + [now]
+    item_id = str(body.get("item_id") or "")
+    items = [r for r in _wrap(_repo().review_queue) if r["item_id"] == item_id]
+    if not items:
+        raise HTTPException(404, "확인 필요 목록에 없는 항목")
+    return suggest_judgment(_repo(), items[0])

@@ -525,6 +525,36 @@ class SupabaseRepository(Repository):
         return self.c.rpc("m13_link_confirm", {"p": {"table": table, "id": row_id, "status": status, "actor": actor or settings.actor, "reason": reason}})
 
 
+    # ---------------------------------------------------------------- 사람 판단 기록 (확인 필요 목록 · 판단 이력 · 저장 RPC)
+    def review_queue(self, model: str | None = None, stage: str | None = None, lot: str | None = None) -> list[dict]:
+        """뷰 m13_review_queue: 판독값 확인 필요 · 검사 LOT 미해결 · 생산 이벤트 확인 · 초품 위치도 경계/불량."""
+        params: dict[str, Any] = {"order": "stage_code.asc,item_date.asc.nullslast,item_id.asc"}
+        if model:
+            params["model_code"] = f"eq.{model}"
+        if stage:
+            params["stage_code"] = f"eq.{stage}"
+        if lot:
+            params["lot_code"] = f"ilike.*{lot}*"
+        return self.c.select("m13_review_queue", params, limit=2000)
+
+    def judgment_log(self, lot: str | None = None, kind: str | None = None, model: str | None = None, limit: int = 200) -> list[dict]:
+        """뷰 m13_judgment_log: 팀 감사 테이블에서 뽑은 판단 1건 = 1행(최근 순)."""
+        params: dict[str, Any] = {"order": "audit_id.desc",
+                                  "select": "audit_id,changed_at,actor_ref,kind,decision,decision_label,stage_label,model_code,lot_code,item_date,title,value,basis,note,images,ai_decision,ai_agreed"}
+        if lot:
+            params["lot_code"] = f"ilike.*{lot}*"
+        if kind:
+            params["kind"] = f"eq.{kind}"
+        if model:
+            params["model_code"] = f"eq.{model}"
+        return self.c.select("m13_judgment_log", params, limit=limit)
+
+    def judgment_save(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_judgment_save", {"p": payload})
+
+
 _repo: Repository | None = None
 
 
