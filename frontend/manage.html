@@ -24,7 +24,7 @@ pre{background:var(--bg);border:1px solid var(--grid);border-radius:8px;padding:
     <input id="email" type="email" placeholder="팀원 이메일" style="width:190px"><input id="pw" type="password" placeholder="비밀번호" style="width:130px"><button class="ghost" id="login">로그인</button><button class="ghost" id="logout" style="display:none">로그아웃</button>
     <details style="display:inline"><summary class="muted" style="cursor:pointer;font-size:12px">관리자 토큰</summary><input id="token" placeholder="ADMIN_API_TOKEN (비상용)" style="width:200px"><button class="ghost small" id="tokenGo">확인</button></details></span>
   <a href="index.html" id="backLink">← 대시보드</a></header>
-<nav class="tabs" id="tabs"><button data-v="form" class="on">직접 입력</button><button data-v="file">엑셀·CSV</button><button data-v="image">이미지(Claude)</button><button data-v="gaps">사슬 보완</button><button data-v="confirm">연결 확인</button><button data-v="position">CA 초품 위치도</button><button data-v="crud">CRUD 이력</button></nav>
+<nav class="tabs" id="tabs"><button data-v="form" class="on">직접 입력</button><button data-v="file">엑셀·CSV</button><button data-v="image">이미지(Claude)</button><button data-v="gaps">사슬 보완</button><button data-v="confirm">연결 확인</button><button data-v="position">CA 초품 위치도</button><button data-v="reinsp">최종검사 재검사</button><button data-v="crud">CRUD 이력</button></nav>
 <main>
 <section class="view on" id="v-form"><div class="card"><h3>작업일보 1장</h3><div class="sub">생산 기록과 함께 <b>투입 LOT·원자재 LOT</b>을 적어야 사슬이 이어집니다. 연결은 모두 CANDIDATE 로 들어가고, "연결 확인" 탭에서 사람이 CONFIRMED 로 바꿉니다.</div>
   <div class="row"><div><label>모델</label><select id="f_model"><option>IV</option><option>OV</option><option>HSV</option></select></div>
@@ -55,6 +55,24 @@ pre{background:var(--bg);border:1px solid var(--grid);border-radius:8px;padding:
   <label>측정값 (A1-3 하루치 블록 그대로, 또는 NO 좌X 좌Y 우X 우Y)</label><textarea id="p_rows" rows="8" placeholder="1	2.138	12.086	2.128	12.07&#10;2	2.069	12.004	2.096	11.903"></textarea>
   <div style="display:flex;gap:8px;margin-top:10px"><button class="ghost" id="p_preview">미리보기(판정)</button><button class="primary" id="p_save">DB에 저장</button><a id="p_dash" href="index.html" style="margin-left:auto;align-self:center">대시보드 CA 화면에서 보기 →</a></div>
   <div class="ocr-controls" style="margin-top:10px"><span id="st-position" class="ocr-status info" style="margin:0;flex:1">대기 중 · 붙여넣은 뒤 미리보기를 누르세요</span></div><div id="p_out" style="margin-top:10px"></div></div></section>
+<section class="view" id="v-reinsp"><div class="card"><h3>최종검사 재검사 (일보 비고란)</h3><div class="sub">재검사 = <b>이미 최종검사한 LOT 에서 불량을 추가로 가려내는 작업</b>입니다. 비고란을 캡처해 <b>AI로 읽기</b>를 하거나, 비고에 LOT·모델이 없으면 직접 고르세요.
+ 저장하면 팀 표에 FK 로 연결됩니다: <code>inspection_run</code>(재검) → <code>inspection_lot</code>(대상 CA 제품 LOT) · <code>inspection_run_link</code>(본검사 → 재검) · <code>quality_finding</code>(가려낸 불량, 불량 유형). 잘못·중복 입력은 아래 목록에서 <b>삭제(VOID)</b> — 행은 지우지 않고 CRUD 이력에 <b>[최종검사]</b> 로 남습니다.</div>
+  <h4>① 비고란 캡처 (선택)</h4>
+  <div class="row"><div><label>비고란 이미지 (5MB 이하)</label><input type="file" id="r_img" accept="image/jpeg,image/png,image/webp"></div><div><label>일보 검사일 (마킹코드 연도 기준)</label><input type="date" id="r_base"></div><div><label>&nbsp;</label><button class="ghost" id="r_read" type="button">AI로 읽기</button></div></div>
+  <div id="r_imgInfo" class="muted"></div><div id="r_ai"></div>
+  <h4>② 재검 내용 (사람이 확인 후 저장)</h4>
+  <div class="row"><div><label>모델</label><select id="r_model"><option value="">고르세요</option><option>IV</option><option>OV</option><option>HSV</option></select></div><div><label>재검일</label><input type="date" id="r_date"></div>
+   <div><label>방법</label><select id="r_method"><option value="VISUAL_MANUAL">육안 재검</option><option value="MICROSCOPE">현미경 검사</option></select></div><div><label>재검 합계 수량 (EA)</label><input type="number" min="0" id="r_qty"></div></div>
+  <label>대상 LOT (재검 1건에 여러 LOT 가능 · 같은 모델의 최종검사 받은 CA 제품 LOT 에서 고름 · BOX 를 넣으면 ×480EA)</label>
+  <table><thead><tr><th>원문 마킹</th><th>찾기</th><th>CA 제품 LOT</th><th>본검사 (이 LOT 을 검사한 최종검사)</th><th>BOX</th><th>EA</th><th></th></tr></thead><tbody id="r_lots"></tbody></table>
+  <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="ghost small" id="r_addLot" type="button">＋ LOT 줄</button><button class="ghost small" id="r_allPrior" type="button" title="본검사가 여러 건인 LOT 을 모두 '본검사 전부'로">본검사 전부로 맞추기</button><span id="r_lotSum" class="muted"></span></div>
+  <label>비고 원문</label><textarea id="r_note" rows="2" maxlength="1000" placeholder="비고란 원문 그대로 (사람 이름은 빼고)"></textarea>
+  <label>재검에서 가려낸 불량</label><datalist id="r_dlist"></datalist><table><tbody id="r_defects"></tbody></table><button class="ghost small" id="r_addDefect" type="button" style="margin-top:6px">＋ 불량 줄</button>
+  <div style="display:flex;gap:8px;margin-top:10px;align-items:center"><label style="display:flex;gap:6px;align-items:center;font-weight:400;margin:0"><input type="checkbox" id="r_replace" style="width:auto"> 기존 기록 바꾸기</label><button class="primary" id="r_save" type="button" style="margin-left:auto">DB에 저장</button></div>
+  <div class="ocr-controls" style="margin-top:10px"><span id="st-reinsp" class="ocr-status info" style="margin:0;flex:1">대기 중 · 비고란을 캡처하거나 모델부터 고르세요</span></div>
+  <h4>③ 입력된 재검사 (삭제 = VOID)</h4>
+  <div style="display:flex;gap:8px"><select id="r_listModel" style="width:120px"><option value="">전체 모델</option><option>IV</option><option>OV</option><option>HSV</option></select><button class="ghost" id="r_listGo" type="button">새로고침</button></div>
+  <div id="r_list" style="margin-top:8px"></div></div></section>
 <section class="view" id="v-crud"><div class="card"><h3>CRUD 이력 (공정 단계별)</h3><div class="sub">모든 생성·수정·삭제(VOID)는 팀 감사 테이블 <code>mqi_audit.row_change</code> 에 자동으로 남습니다. 여기서는 그 기록을 <b>저장 1회(트랜잭션)</b> 단위로 묶고, 바뀐 행이 어느 공정에 속하는지 풀어서 보여 줍니다.
  누가 = <code>actor</code>(로그인 사용자 가림) · 무엇을 = <code>[공정] 입력경로 · 요약</code>. 행을 누르면 바뀐 표·열이 나옵니다.</div>
   <div id="crudStages" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div>
@@ -190,4 +208,4 @@ $('#crudGo').onclick=()=>job('crud','CRUD 이력 조회',async signal=>{const q=
   return `${h.transactions.length}건(저장 단위) · ${h.rows}행`});
 addInput();addMat();addDef();
 {const qt=new URLSearchParams(location.search).get('tab');const qb=qt&&document.querySelector('#tabs [data-v="'+qt.replace(/[^a-z]/g,'')+'"]');if(qb)qb.click()}
-</script></body></html>
+</script><script src="reinspection.js"></script></body></html>

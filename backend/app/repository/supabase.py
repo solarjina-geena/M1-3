@@ -555,6 +555,32 @@ class SupabaseRepository(Repository):
         return self.c.rpc("m13_judgment_save", {"p": payload})
 
 
+    # ---------------------------------------------------------------- 최종검사 재검사 (비고란 재검 · inspection_run REINSPECTION)
+    def reinspection_targets(self, model: str) -> list[dict]:
+        """뷰 m13_reinspection_targets: 최종검사(FINAL)를 받은 CA 제품 LOT 과 그 본검사(재검 대상 후보)."""
+        return self.c.select("m13_reinspection_targets", {"model_code": f"eq.{model}", "order": "lot_date.desc,inspection_date.asc"}, limit=5000)
+
+    def reinspections(self, model: str | None = None, limit: int = 300) -> list[dict]:
+        params: dict[str, Any] = {"order": "inspection_date.desc,recorded_at.desc"}
+        if model:
+            params["model_code"] = f"eq.{model}"
+        return self.c.select("m13_reinspections", params, limit=limit)
+
+    def final_defect_types(self) -> list[dict]:
+        return self.c.select("defect_type", {"defect_category": "eq.FIN", "record_state": "eq.ACTIVE", "is_active": "eq.true",
+                                             "select": "defect_code,defect_name", "order": "defect_name.asc"}, schema=settings.schema, limit=1000)
+
+    def reinspection_save(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_reinspection_save", {"p": payload})
+
+    def reinspection_void(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_reinspection_void", {"p": payload})
+
+
 _repo: Repository | None = None
 
 

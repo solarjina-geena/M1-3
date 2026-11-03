@@ -194,7 +194,7 @@ def journal_preview(payload: JournalPayload):
 
 STAGE_LABEL = {"IMEB3_INJECTION": "사출", "IMEB3_STITCHING": "스티칭", "IMEB3_WINDING": "권선(BA)", "IMEB3_CA_PRESS": "압입(CA)",
                "IMEB3_FINAL_INSPECTION": "최종검사"}
-VIA_LABEL = {"judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기"}
+VIA_LABEL = {"reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기"}
 
 
 def _actor(who: dict) -> str:
@@ -527,3 +527,113 @@ def judgment_suggest(body: dict[str, Any], authorization: Optional[str] = Header
     if not items:
         raise HTTPException(404, "확인 필요 목록에 없는 항목")
     return suggest_judgment(_repo(), items[0])
+
+
+# ---------------------------------------------------------------- 최종검사 재검사 (일보 비고란) 입력·삭제
+class ReinspFinding(BaseModel):
+    defect_code: Optional[str] = None
+    name_raw: Optional[str] = None
+    qty: Optional[int] = None
+
+
+class ReinspLot(BaseModel):
+    lot_code: str                          # CA 제품 LOT (사람이 고름)
+    lot_code_raw: Optional[str] = None     # 비고 원문 마킹코드
+    box_count: Optional[int] = None
+    qty_ea: Optional[int] = None
+    prior_run_id: str                      # 본검사 inspection_run_id 또는 'NONE'
+
+
+class ReinspectionIn(BaseModel):
+    model: str
+    inspection_date: str
+    method: str = "VISUAL_MANUAL"
+    qty_ea: Optional[int] = None
+    raw_note: str = ""
+    lots: list[ReinspLot]
+    findings: list[ReinspFinding] = []
+    replace: bool = False
+    source: dict[str, Any] = {}
+
+
+class ReinspVoidIn(BaseModel):
+    run_id: str
+    note: str
+
+
+@router.get("/reinspection/targets")
+def reinspection_targets(model: str = Query(..., pattern="^(IV|OV|HSV)$")):
+    """재검 대상 후보: 최종검사를 받은 CA 제품 LOT 과 본검사 목록."""
+    return _wrap(_repo().reinspection_targets, model)
+
+
+@router.get("/reinspections")
+def reinspections(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"), limit: int = Query(300, ge=1, le=2000)):
+    return _wrap(_repo().reinspections, model, limit)
+
+
+@router.get("/defect-types/final")
+def final_defect_types():
+    return _wrap(_repo().final_defect_types)
+
+
+@router.post("/reinspection")
+def reinspection_save(body: ReinspectionIn, authorization: Optional[str] = Header(None)):
+    """재검 1건 저장: inspection_run(REINSPECTION) + inspection_lot(CA LOT FK) + inspection_run_link(본검사 FK) + quality_finding."""
+    who = _admin(authorization)
+    if body.model not in ("IV", "OV", "HSV"):
+        raise HTTPException(400, "모델은 IV/OV/HSV")
+    if len(body.raw_note) > 1000 or _PII.search(body.raw_note or ""):
+        raise HTTPException(400, "비고 원문은 1000자 이내, 이메일·전화번호 형태 금지(사람 이름도 빼 주세요)")
+    if len(body.findings) > 30 or any((f.qty or 0) < 0 for f in body.findings):
+        raise HTTPException(400, "불량은 30줄까지, 수량은 0 이상")
+    if not 1 <= len(body.lots) <= 30 or any((x.box_count or 0) < 0 or (x.qty_ea or 0) < 0 for x in body.lots):
+        raise HTTPException(400, "대상 LOT 은 1~30줄, BOX·수량은 0 이상")
+    p = body.model_dump()
+    p["actor"] = _actor(who)
+    nd = sum(f.qty or 0 for f in body.findings)
+    p["reason"] = _reason("IMEB3_FINAL_INSPECTION", "reinspection",
+                          f"재검사 {body.model} {body.inspection_date} LOT {', '.join(x.lot_code for x in body.lots[:5])}{' 외 ' + str(len(body.lots) - 5) if len(body.lots) > 5 else ''}"
+                          f" · 불량 {nd}EA" + (" (기존 기록 바꾸기)" if body.replace else ""))
+    return _wrap(_repo().reinspection_save, p)
+
+
+@router.post("/reinspection/void")
+def reinspection_void(body: ReinspVoidIn, authorization: Optional[str] = Header(None)):
+    """잘못 입력·중복 입력한 재검을 삭제(VOID). 재검·대상 LOT·본검사 연결·불량을 함께 VOID, 행은 지우지 않는다."""
+    who = _admin(authorization)
+    note = body.note.strip()
+    if not 5 <= len(note) <= 300 or _PII.search(note):
+        raise HTTPException(400, "삭제 사유는 5~300자, 이메일·전화번호 형태 금지")
+    return _wrap(_repo().reinspection_void, {"run_id": body.run_id, "note": note, "actor": _actor(who),
+                                             "reason": _reason("IMEB3_FINAL_INSPECTION", "reinspection", f"재검사 삭제(VOID) · {note}")})
+
+
+_read_calls: dict[str, list[float]] = {}
+
+
+@router.post("/reinspection/read-image")
+async def reinspection_read_image(file: UploadFile = File(...), base_date: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+                                  authorization: Optional[str] = Header(None)):
+    """비고란 캡처(화면에서 긴 변 1,568px JPEG 로 줄인 사본)를 Claude 가 읽는다. 로그인 필요, 사용자당 분당 5회, 5MB 이하. 원본은 보관하지 않는다."""
+    import time
+    from ..ingest.reinspection_image import read_reinspection_note
+    who = _admin(authorization)
+    key = who.get("email") or who.get("via") or "anon"
+    now = time.time()
+    recent = [t for t in _read_calls.get(key, []) if now - t < 60]
+    if len(recent) >= 5:
+        raise HTTPException(429, "AI 읽기는 1분에 5번까지입니다")
+    _read_calls[key] = recent + [now]
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "이미지는 5MB 이하")
+    media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get((file.filename or "x.jpg").lower().rsplit(".", 1)[-1])
+    if not media:
+        raise HTTPException(400, "jpg/png/webp 이미지만 받습니다")
+    try:
+        return await read_reinspection_note(data, media, base_date)
+    except anthropic.APIError as e:
+        raise HTTPException(502, f"AI 호출 오류: {e}") from e
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(503, str(e)) from e
