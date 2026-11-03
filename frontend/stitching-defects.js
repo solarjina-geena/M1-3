@@ -28,6 +28,7 @@
       // Candidate labels and BA_* records in CA are deliberately not assigned a new meaning.
     ]),
     IMEB3_FINAL_INSPECTION: map([
+      ['용접burr', ['용접찍힘버']],
       ['마킹 불량', ['marking', 'Marking 불량']],
       ['보빈 파손', ['Bobbin 파손', 'bobbin_break', 'bobbin_파손']],
       ['포스트 파손', ['Post 파손', 'post_break', 'post_파손']],
