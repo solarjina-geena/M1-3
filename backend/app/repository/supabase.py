@@ -436,6 +436,10 @@ class SupabaseRepository(Repository):
         if settings.read_only:
             raise SupabaseError("이 환경은 읽기 전용입니다(팀 DB 또는 M13_READ_ONLY=1). 쓰기는 개인 프로젝트에서만 합니다.")
 
+    def journal_exists(self, payload: dict[str, Any]) -> dict:
+        """같은 일보(모델·작업일·교대·공정·순번, 최종검사는 검사자·검사량까지)가 이미 저장돼 있는지(읽기 전용)."""
+        return self.c.rpc("m13_journal_exists", {"p": payload}) or {"exists": False}
+
     def journal_save(self, payload: dict[str, Any]) -> dict:
         self._guard()
         payload.setdefault("actor", settings.actor)

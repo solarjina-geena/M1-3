@@ -36,7 +36,8 @@ PROMPT = """이 이미지는 iMEB3 제조 작업일보(사출·스티칭·조립
 - 날짜 표기('8.28', '7/22', '26.9.4')는 raw 에 원문 그대로 두고 lot_date 는 비워도 됩니다(서버가 정규화).
 - work_date 는 반드시 YYYY-MM-DD 형식으로 적습니다(연도가 없으면 요일·문맥으로 추정). 글자가 흐려 불확실하면 가장 그럴듯한 날짜를 적고 그 사정은 uncertain_notes 에 씁니다. work_date 에 'UNCERTAIN' 같은 글자를 넣지 않습니다.
 - 모델이 IV/OV/HSV 중 어느 것인지 확실하지 않으면 그 항목을 만들지 말고 uncertain_notes 에 이유를 적습니다. OV/HSV 합산 양식이면 합산 수량을 나누지 않습니다.
-- 작업자 이름은 적지 않습니다. 검사자 이름만 inspector_raw 에 적습니다(가려서 저장).
+- 사람 이름: 생산 공정의 작업자(작업자 칸·근무 현황)는 workers_raw 에 한 명씩(name, 역할을 알면 role: 작업자=OPERATOR, 셋업=SETUP, 반장·조장=SUPERVISOR),
+  최종검사 검사자는 inspector_raw 에 적습니다. 서버가 가운데 글자를 가려 저장하고 원문은 버립니다. 이름을 비고·note 같은 다른 칸에 옮겨 적지 않습니다.
 - 페이지에 있는데 위 항목에 없는 정보는 source.note 에 짧게 남깁니다.
 """
 
@@ -45,6 +46,29 @@ class Extraction(BaseModel):
     document_type: Literal["INJECTION", "STITCHING", "ASSEMBLY", "FINAL_INSPECTION", "UNKNOWN"]
     journals: list[JournalPayload] = Field(default_factory=list)
     uncertain_notes: list[str] = Field(default_factory=list)
+
+
+def file_name_date(name: str | None) -> str | None:
+    """파일명에 적힌 작업일(폴더 정리 규칙 '20260923-1.pdf' 등). 있으면 이것이 기준, 없으면 None(AI 판독 날짜로 보완).
+    인식: 2026-09-23 · 2026.09.23 · 20260923 · 26.09.23 · 파일명 맨 앞 260923. 달력에 없는 날짜는 버린다."""
+    import re
+    from datetime import date
+    n = (name or "").rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    if re.match(r"(?i)(kakaotalk|img|pxl|screenshot|스크린샷|photo|camera|scan)[_ -]", n):
+        return None   # 메신저·카메라·스캐너가 붙인 저장 시각이지 작업일이 아니다 → AI 판독 날짜로 보완
+    pats = [(r"(?<!\d)(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})(?!\d)", 1), (r"(?<!\d)(\d{2})\.(\d{1,2})\.(\d{1,2})(?!\d)", 2), (r"^(\d{2})(\d{2})(\d{2})(?!\d)", 2)]
+    for pat, kind in pats:
+        m = re.search(pat, n)
+        if not m:
+            continue
+        y, mo, d = (int(g) for g in m.groups())
+        if kind == 2:
+            y += 2000
+        try:
+            return date(y, mo, d).isoformat()
+        except ValueError:
+            continue
+    return None
 
 
 def _json_text(text: str) -> str:
@@ -99,16 +123,21 @@ async def extract_from_image(data: bytes, media_type: str, filename: str) -> dic
     # 작업일보 항목은 한 건씩 검증한다. 한 항목의 날짜 표기 오류가 나머지 항목까지 버리지 않게 하고,
     # 실패한 항목은 엑셀 업로드와 같은 모양(ok=False, error, raw)으로 화면에 보여 준다.
     items = []
+    fdate = file_name_date(filename)   # 파일명 날짜가 있으면 기준(폴더 정리 규칙), 없으면 AI 가 읽은 날짜로 보완
     for k, jraw in enumerate(raw.get("journals") or []):
         try:
+            if fdate and isinstance(jraw, dict):
+                jraw = {**jraw, "work_date": fdate}
             j = JournalPayload.model_validate(jraw)
             j.source.method = "IMAGE"
             j.source.file = j.source.file or filename
-            items.append({"ok": True, "payload": j.model_dump(), "normalized": j.normalized()})
+            ai_date = (raw.get("journals") or [])[k].get("work_date") if isinstance((raw.get("journals") or [])[k], dict) else None
+            items.append({"ok": True, "payload": j.model_dump(), "normalized": j.normalized(),
+                          "date_source": "FILE" if fdate else "AI", "ai_work_date": ai_date})
         except ValidationError as e:
             first = e.errors()[0]
             loc = ".".join(str(x) for x in first.get("loc", ()))
             items.append({"ok": False, "row": k + 1, "error": f"{first.get('msg')} (항목 {loc})",
                           "raw": jraw if isinstance(jraw, dict) else {"value": str(jraw)}})
-    return {"document_type": doc_type, "items": items, "uncertain_notes": notes,
+    return {"document_type": doc_type, "items": items, "uncertain_notes": notes, "file_date": fdate,
             "usage": {"input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens}}

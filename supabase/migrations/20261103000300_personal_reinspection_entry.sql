@@ -57,6 +57,8 @@ GRANT SELECT ON public.m13_reinspections TO anon, authenticated, service_role;
 -- p = {model, inspection_date, method(VISUAL_MANUAL|MICROSCOPE), qty_ea(재검 합계), raw_note,
 --      lots:[{lot_code(CA LOT), lot_code_raw(원문 마킹), box_count, qty_ea, prior_run_id | 'ALL' | 'NONE'}],
 --      'ALL' = 그 LOT 을 검사한 같은 모델 최종검사 중 재검일 이전 것 전부(기록된 사실만, 추정 아님)
+--      lot_code 가 비고 lot_code_raw 만 있으면 = 원문 마킹만 남긴 미연결 줄(UNRESOLVED, 그날 CA LOT 이 DB 에 없거나 판독 불확실). '확인 필요' 탭에서 나중에 연결.
+-- 중복 = 같은 모델·재검일·합계 수량이고 대상 LOT(또는 원문 마킹)이 겹치는 재검. 같은 날 다른 검사자의 별개 재검(수량이 다름)은 막지 않는다.
 --      findings:[{defect_code?, name_raw, qty}], source:{image_sha256, ai_read}, replace, actor, reason}
 -- 불량은 대상 LOT 이 1개면 그 LOT(inspection_lot_id)에, 여러 개면 재검 건(inspection_run)에만 붙인다(원문이 LOT 별로 나누지 않음 — 나누지 않는다).
 CREATE OR REPLACE FUNCTION public.m13_reinspection_save(p jsonb) RETURNS jsonb
@@ -69,7 +71,7 @@ DECLARE
   v_method text := coalesce(nullif(p->>'method', ''), 'VISUAL_MANUAL');
   v_qty int := nullif(p->>'qty_ea', '')::int;
   v_old uuid[]; v_lots jsonb := coalesce(p->'lots', '[]'::jsonb); v_seen uuid[] := '{}'; v_priors uuid[] := '{}';
-  l jsonb; f jsonb; o uuid;
+  l jsonb; f jsonb; o uuid; v_raws text[] := '{}';
 BEGIN
   IF current_setting('transaction_isolation') <> 'serializable' THEN
     RAISE EXCEPTION 'm13_reinspection_save: SERIALIZABLE 트랜잭션이 필요합니다' USING ERRCODE = '25000';
@@ -89,6 +91,12 @@ BEGIN
   -- 대상 LOT 검증(같은 모델 CA 제품 LOT, 본검사는 그 LOT 을 검사한 같은 모델 최종검사) — 쓰기 전에 전부 확인
   FOR l IN SELECT * FROM jsonb_array_elements(v_lots) LOOP
     v_lot := NULL;
+    IF coalesce(btrim(l->>'lot_code'), '') = '' THEN
+      IF coalesce(btrim(l->>'lot_code_raw'), '') = '' THEN RAISE EXCEPTION '대상 LOT 줄에 LOT 도 원문 마킹도 없습니다'; END IF;
+      IF upper(btrim(l->>'lot_code_raw')) = ANY (v_raws) THEN RAISE EXCEPTION '같은 원문 마킹이 두 줄입니다: %', l->>'lot_code_raw'; END IF;
+      v_raws := v_raws || upper(btrim(l->>'lot_code_raw'));
+      CONTINUE;
+    END IF;
     SELECT pl.lot_id INTO v_lot FROM mqi.production_lot pl
       JOIN mqi.process_run_lot prl ON prl.production_lot_id = pl.lot_id AND prl.lot_role = 'OUTPUT' AND prl.record_state = 'ACTIVE'
       JOIN mqi.process_run pr ON pr.process_run_id = prl.process_run_id
@@ -117,11 +125,13 @@ BEGIN
 
   -- 중복: 같은 모델·재검일에 이 LOT 중 하나라도 들어간 재검이 있으면 replace=true 일 때만 그 재검들을 VOID
   SELECT array_agg(DISTINCT ir.inspection_run_id) INTO v_old FROM mqi.inspection_run ir
-    JOIN mqi.inspection_lot il ON il.inspection_run_id = ir.inspection_run_id AND il.record_state = 'ACTIVE' AND il.production_lot_id = ANY (v_seen)
-   WHERE ir.model_id = v_model AND ir.inspection_date = v_date AND ir.inspection_type = 'REINSPECTION' AND ir.record_state = 'ACTIVE';
+    JOIN mqi.inspection_lot il ON il.inspection_run_id = ir.inspection_run_id AND il.record_state = 'ACTIVE'
+                              AND (il.production_lot_id = ANY (v_seen) OR (il.production_lot_id IS NULL AND upper(il.lot_code_raw) = ANY (v_raws)))
+   WHERE ir.model_id = v_model AND ir.inspection_date = v_date AND ir.inspection_type = 'REINSPECTION' AND ir.record_state = 'ACTIVE'
+     AND ir.inspected_qty_ea IS NOT DISTINCT FROM v_qty;
   IF v_old IS NOT NULL THEN
     IF coalesce((p->>'replace')::boolean, false) IS NOT TRUE THEN
-      RAISE EXCEPTION '이미 입력된 재검사가 있습니다(%, %, 같은 LOT 포함 %건). 바꾸려면 "기존 기록 바꾸기"를 켜거나 아래 목록에서 삭제하세요', p->>'model', v_date, cardinality(v_old);
+      RAISE EXCEPTION '이미 입력된 재검사가 있습니다(%, %, 같은 합계 수량·같은 LOT %건). 바꾸려면 "기존 기록 바꾸기"를 켜거나 아래 목록에서 삭제하세요', p->>'model', v_date, cardinality(v_old);
     END IF;
     FOREACH o IN ARRAY v_old LOOP PERFORM public.m13_reinspection_void_rows(o); END LOOP;
   END IF;
@@ -136,6 +146,14 @@ BEGIN
   RETURNING inspection_run_id INTO v_run;
 
   FOR l IN SELECT * FROM jsonb_array_elements(v_lots) LOOP
+    IF coalesce(btrim(l->>'lot_code'), '') = '' THEN
+      INSERT INTO mqi.inspection_lot (inspection_run_id, production_lot_id, lot_code_raw, recorded_box_count, inspected_qty_ea, lot_linkage_status, remark)
+      VALUES (v_run, NULL, upper(btrim(l->>'lot_code_raw')), nullif(l->>'box_count', '')::int, nullif(l->>'qty_ea', '')::int, 'UNRESOLVED',
+              jsonb_build_object('marking_code', upper(btrim(l->>'lot_code_raw')), 'unresolved_reason', coalesce(nullif(l->>'note', ''), '같은 모델 CA 제품 LOT 을 DB 에서 찾지 못함'))::text)
+      RETURNING inspection_lot_id INTO v_il;
+      v_nl := v_nl + 1; v_one_il := v_il;
+      CONTINUE;
+    END IF;
     SELECT pl.lot_id INTO v_lot FROM mqi.production_lot pl
       JOIN mqi.process_run_lot prl ON prl.production_lot_id = pl.lot_id AND prl.lot_role = 'OUTPUT' AND prl.record_state = 'ACTIVE'
       JOIN mqi.process_run pr ON pr.process_run_id = prl.process_run_id

@@ -34,12 +34,14 @@
   function fillLot(tr, pick) {
     const sel = tr.querySelector('.r_lot'), keep = pick ?? sel.value, opts = lotOptions(tr.querySelector('.r_lotq').value);
     sel.innerHTML = `<option value="">${$('#r_model').value ? `고르세요 (${opts.length}개)` : '모델을 먼저 고르세요'}</option>` +
-      opts.map(o => `<option value="${esc(o.code)}">${esc(o.code)} · CA ${esc(o.date)}${o.marks.size ? ' · 마킹 ' + esc([...o.marks].join('/')) : ''}</option>`).join('');
-    if (keep && opts.some(o => o.code === keep)) sel.value = keep;
+      opts.map(o => `<option value="${esc(o.code)}">${esc(o.code)} · CA ${esc(o.date)}${o.marks.size ? ' · 마킹 ' + esc([...o.marks].join('/')) : ''}</option>`).join('') +
+      '<option value="__UNRESOLVED">LOT 없음 — 원문 마킹만 저장(미연결, 확인 필요 탭에서 나중에 연결)</option>';
+    if (keep && (keep === '__UNRESOLVED' || opts.some(o => o.code === keep))) sel.value = keep;
     fillPrior(tr);
   }
   function fillPrior(tr) {
     const code = tr.querySelector('.r_lot').value, runs = targets.filter(t => t.ca_lot_code === code), sel = tr.querySelector('.r_prior');
+    if (code === '__UNRESOLVED') { sel.innerHTML = '<option value="NONE">연결 안 함 (LOT 미연결)</option>'; return }
     sel.innerHTML = !code ? '<option value="">LOT 을 먼저 고르세요</option>'
       : `<option value="">고르세요 (본검사 ${runs.length}건)</option>` + (runs.length > 1 ? `<option value="ALL">이 LOT 본검사 전부 (${runs.length}건, 재검일 이전)</option>` : '') +
         runs.map(t => `<option value="${esc(t.inspection_run_id)}">${esc(t.inspection_date)} 최종검사${t.inspection_round_no ? ' ' + t.inspection_round_no + '차' : ''} · ${t.run_qty_ea ?? '?'}EA · ${esc(t.inspection_lot_raw || '')}</option>`).join('') +
@@ -78,6 +80,19 @@
     $('#r_defects').append(tr); upd();
   }
 
+  // 파일명 날짜(서버 file_name_date 와 같은 규칙). 메신저·카메라가 붙인 저장 시각은 쓰지 않는다
+  function fileDate(name) {
+    const n = String(name || '');
+    if (/^(kakaotalk|img|pxl|screenshot|스크린샷|photo|camera|scan)[_ -]/i.test(n)) return null;
+    const pats = [[/(?<!\d)(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})(?!\d)/, 0], [/(?<!\d)(\d{2})\.(\d{1,2})\.(\d{1,2})(?!\d)/, 2000], [/^(\d{2})(\d{2})(\d{2})(?!\d)/, 2000]];
+    for (const [re, add] of pats) {
+      const m = re.exec(n); if (!m) continue;
+      const y = +m[1] + add, mo = +m[2], d = +m[3], dt = new Date(Date.UTC(y, mo - 1, d));
+      if (dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d) return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+    return null;
+  }
+
   // ---- 비고란 캡처 → AI 읽기
   async function shrink(file) {
     const bmp = await createImageBitmap(file); const k = Math.min(1, 1568 / Math.max(bmp.width, bmp.height));
@@ -93,11 +108,13 @@
     const sha = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await f.arrayBuffer()))].map(b => b.toString(16).padStart(2, '0')).join('');
     const small = await shrink(f);
     img = { sha256: sha, name: f.name.slice(0, 80), blob: small };
+    const fd8 = fileDate(f.name);   // 파일명 날짜가 기준(폴더 정리 규칙), 없으면 직접 넣거나 비고 판독으로 보완
+    if (fd8) { $('#r_base').value = fd8; if (!$('#r_date').value) $('#r_date').value = fd8 }
     $('#r_imgInfo').innerHTML = `<img src="${URL.createObjectURL(small)}" style="max-width:100%;max-height:220px;border:1px solid var(--border);border-radius:6px;margin-top:6px"><br>원본 해시 ${sha.slice(0, 12)}… · AI 에 보낼 사본 ${(small.size / 1024).toFixed(0)}KB (원본은 올리지 않음)`;
   };
   $('#r_read').onclick = () => job('reinsp', 'AI로 읽기', async () => {
     if (!img) throw new Error('비고란 캡처 이미지를 먼저 고르세요');
-    const fd = new FormData(); fd.append('file', img.blob, 'note.jpg');
+    const fd = new FormData(); fd.append('file', img.blob, img.name.replace(/\.[^.]+$/, '') + '.jpg');
     const base = $('#r_base').value;
     const out = await api('/api/reinspection/read-image' + (base ? '?base_date=' + base : ''), { method: 'POST', authed: true, body: fd });
     aiEntries = out.entries || [];
@@ -143,7 +160,7 @@
   // ---- 저장
   $('#r_save').onclick = () => {
     const lots = [...document.querySelectorAll('#r_lots tr')].map(tr => ({
-      lot_code: tr.querySelector('.r_lot').value, lot_code_raw: tr.querySelector('.r_mark').value.trim().toUpperCase() || null,
+      lot_code: tr.querySelector('.r_lot').value === '__UNRESOLVED' ? '' : tr.querySelector('.r_lot').value, lot_code_raw: tr.querySelector('.r_mark').value.trim().toUpperCase() || null,
       box_count: tr.querySelector('.r_box').value === '' ? null : +tr.querySelector('.r_box').value,
       qty_ea: tr.querySelector('.r_ea').value === '' ? null : +tr.querySelector('.r_ea').value, prior_run_id: tr.querySelector('.r_prior').value }));
     const findings = [...document.querySelectorAll('#r_defects tr')].map(tr => {
@@ -154,9 +171,9 @@
       qty_ea: $('#r_qty').value === '' ? null : +$('#r_qty').value, raw_note: $('#r_note').value.trim(), lots, findings, replace: $('#r_replace').checked,
       source: img ? { image_sha256: img.sha256, ai_read: aiEntries.length > 0 } : { ai_read: false, typed: true } };
     const miss = [!body.model && '모델', !body.inspection_date && '재검일', !lots.length && '대상 LOT'].filter(Boolean);
-    const badLot = lots.findIndex(l => !l.lot_code || !l.prior_run_id);
+    const badLot = lots.findIndex(l => (!l.lot_code && !l.lot_code_raw) || !l.prior_run_id || (!l.lot_code && [...document.querySelectorAll('#r_lots .r_lot')][lots.indexOf(l)].value !== '__UNRESOLVED'));
     if (miss.length) { setStatus('reinsp', miss.join('·') + ' 을(를) 넣으세요', 'warn'); return }
-    if (badLot >= 0) { setStatus('reinsp', `대상 LOT ${badLot + 1}번째 줄: LOT 과 본검사를 고르세요(본검사가 없으면 "본검사 기록 없음")`, 'warn'); return }
+    if (badLot >= 0) { setStatus('reinsp', `대상 LOT ${badLot + 1}번째 줄: LOT 과 본검사를 고르세요(LOT 이 DB 에 없으면 'LOT 없음 — 원문 마킹만', 이때 원문 마킹 필수)`, 'warn'); return }
     if (findings.some(f => f.qty == null || !f.name_raw)) { setStatus('reinsp', '불량 줄은 이름과 수량을 모두 넣거나 빼 주세요', 'warn'); return }
     job('reinsp', '재검 저장', async () => {
       const r = await api('/api/reinspection', { method: 'POST', authed: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

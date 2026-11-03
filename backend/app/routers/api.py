@@ -186,6 +186,21 @@ def auth_logout(authorization: Optional[str] = Header(None)):
     return {"ok": True}
 
 
+def _mark_existing(items: list[dict]) -> list[dict]:
+    """미리보기 항목마다 '이미 저장된 일보인지' 표시(저장 시 '기존 기록 바꾸기'를 켜야 덮어씀)."""
+    try:
+        repo = get_repository()
+    except SupabaseError:
+        return items
+    for it in items:
+        if it.get("ok") and it.get("normalized"):
+            try:
+                it["exists"] = repo.journal_exists(it["normalized"])
+            except SupabaseError:
+                it["exists"] = None
+    return items
+
+
 @router.post("/journal/preview")
 def journal_preview(payload: JournalPayload):
     """쓰지 않고 정규화 결과만 돌려준다(화면 미리보기)."""
@@ -251,9 +266,9 @@ async def journal_preview_file(file: UploadFile = File(...)):
     data = await file.read()
     name = file.filename or "upload"
     if name.lower().endswith((".xlsx", ".xlsm")):
-        return {"file": name, "items": excel_csv.parse_excel(data, name)}
+        return {"file": name, "items": _mark_existing(excel_csv.parse_excel(data, name))}
     if name.lower().endswith(".csv"):
-        return {"file": name, "items": excel_csv.parse_csv(data, name)}
+        return {"file": name, "items": _mark_existing(excel_csv.parse_csv(data, name))}
     raise HTTPException(400, "xlsx 또는 csv 파일만 받습니다")
 
 
@@ -277,7 +292,9 @@ async def journal_preview_image(request: Request, file: UploadFile = File(...), 
         if ocr_task in done:
             disconnect_task.cancel()
             await asyncio.gather(disconnect_task, return_exceptions=True)
-            return {"file": file.filename, **await ocr_task}
+            out = await ocr_task
+            out["items"] = _mark_existing(out.get("items") or [])
+            return {"file": file.filename, **out}
         ocr_task.cancel()
         await asyncio.gather(ocr_task, return_exceptions=True)
         return Response(status_code=499)
@@ -631,8 +648,11 @@ async def reinspection_read_image(file: UploadFile = File(...), base_date: Optio
     media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get((file.filename or "x.jpg").lower().rsplit(".", 1)[-1])
     if not media:
         raise HTTPException(400, "jpg/png/webp 이미지만 받습니다")
+    from ..ingest.image import file_name_date
+    fdate = file_name_date(file.filename)
     try:
-        return await read_reinspection_note(data, media, base_date)
+        out = await read_reinspection_note(data, media, base_date or fdate)
+        return {**out, "file_date": fdate, "base_date_used": base_date or fdate}
     except anthropic.APIError as e:
         raise HTTPException(502, f"AI 호출 오류: {e}") from e
     except (RuntimeError, ValueError) as e:

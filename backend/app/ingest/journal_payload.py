@@ -32,6 +32,28 @@ def mask_name(raw: str | None) -> str | None:
     return NAME_RE.sub(_m, str(raw))[:60]
 
 
+def mask_person(raw: str | None) -> str | None:
+    """사람 이름 하나(작업자·검사자 칸) → 가운데를 가린 표시명. 한글은 mask_name 과 같고, 영문 표기 이름(외국인 작업자)도
+    단어마다 첫·끝 글자만 남긴다('Nguyen Van' → 'N****n V*n'). 실명은 DB 에 두지 않는다."""
+    if not raw or not str(raw).strip():
+        return None
+    s = mask_name(str(raw).strip())
+
+    def _w(m):
+        w = m.group(0)
+        return w[0] + "*" * (len(w) - 2) + w[-1] if len(w) > 2 else w[0] + "*"
+    return re.sub(r"[A-Za-z]{2,}", _w, s)[:60]
+
+
+def scrub_names(text: str | None, names: list[str]) -> str | None:
+    """자유 문장(비고·메모)에 같은 이름이 다시 나오면 그 자리도 가린다."""
+    if not text:
+        return text
+    for n in sorted({x.strip() for x in names if x and x.strip()}, key=len, reverse=True):
+        text = text.replace(n, mask_person(n) or n)
+    return text
+
+
 def marking_code_date(code: str | None, base: str | None) -> str | None:
     """CA 제품 LOT 마킹코드(조견표) → 생산일. 'Z' + 월 글자(A=1월 … L=12월) + 일 글자(A=1 … Z=26, 2~6=27~31일).
     예: ZHF=8/6, ZIU=9/21, ZH4=8/29. 한 글자라도 못 읽었으면('?') None — 추정하지 않는다.
@@ -114,6 +136,12 @@ class InspectionLot(BaseModel):
     boxes: Optional[int] = None
 
 
+class WorkerName(BaseModel):
+    """작업자(근무 현황·작업자 칸). 이름 원문은 서버에서 가린 뒤 버린다 → mqi.worker(가린 표시명) + worker_assignment(생산 실행 FK)."""
+    name: str = Field(description="작업자 이름 원문(서버가 가운데를 가림)")
+    role: Optional[Literal["OPERATOR", "SETUP", "SUPERVISOR", "OTHER"]] = Field(None, description="작업자=OPERATOR, 셋업=SETUP, 반장·조장=SUPERVISOR")
+
+
 class Source(BaseModel):
     method: Literal["MANUAL", "EXCEL", "CSV", "IMAGE", "FIRESTORE"] = "MANUAL"
     file: Optional[str] = None
@@ -147,7 +175,9 @@ class JournalPayload(BaseModel):
     materials: list[MaterialUse] = Field(default_factory=list)
     defects: list[Defect] = Field(default_factory=list)
     lots: list[InspectionLot] = Field(default_factory=list, description="최종검사일 때 검사한 제품 LOT 목록")
+    workers_raw: list[WorkerName] = Field(default_factory=list, description="생산 공정 작업자(근무 현황) 이름 원문. 저장 전 가운데를 *로 가린다(normalized)")
     source: Source = Field(default_factory=Source)
+    replace: bool = Field(False, description="같은 모델·날짜·교대·공정·순번 일보가 이미 있을 때 이전 원자재·불량·작업자 행을 VOID 하고 다시 저장")
     reason: Optional[str] = None
 
     @field_validator("work_date")
@@ -190,13 +220,36 @@ class JournalPayload(BaseModel):
                 l["boxes"] = int(mb.group(1)) if mb else None
         if self.process == "IMEB3_FINAL_INSPECTION":
             d["inspected_qty"] = self.gross_output_qty
+        # ---- 사람 이름: 검사자·작업자 모두 가린 표시명만 남기고 원문은 버린다. 자유 문장에 같은 이름이 있으면 그 자리도 가린다.
+        raw_names = [w["name"] for w in d.get("workers_raw") or [] if w.get("name")]
         if d.get("inspector_raw"):
-            d["inspector_masked"] = mask_name(d["inspector_raw"])
-            d.pop("inspector_raw", None)   # 실명은 저장하지 않는다
-        for i in d["inputs"]:
-            # BA 일보의 보빈 날짜는 사출 LOT 을 바로 잇지 않고 스티칭 일보 매칭용 참고로 둔다(변환기와 같은 규칙)
-            if self.process == "IMEB3_WINDING" and i.get("component") == "BOBBIN":
-                i["process"] = "IMEB3_INJECTION"
-                i["note"] = (i.get("note") or "") + " 보빈 날짜: 스티칭 일보 매칭 참고(사슬 직접 연결 아님)"
+            raw_names.append(d["inspector_raw"])
+            d["inspector_masked"] = mask_person(d["inspector_raw"])
+        d.pop("inspector_raw", None)   # 실명은 저장하지 않는다
+        d["workers_masked"] = [{"name": mask_person(w["name"]), "role": w.get("role") or "OPERATOR"}
+                               for w in d.pop("workers_raw", None) or [] if mask_person(w.get("name"))]
+        if raw_names:
+            for k in ("remarks_raw", "rework_note", "raw_quantity_text", "equipment_raw"):
+                d[k] = scrub_names(d.get(k), raw_names)
+            d["source"]["note"] = scrub_names(d["source"].get("note"), raw_names)
+            for row in d["inputs"] + d["materials"] + d["defects"] + d["lots"]:
+                for k in ("raw", "note"):
+                    if row.get(k):
+                        row[k] = scrub_names(row[k], raw_names)
+        # ---- BA 일보의 보빈 날짜(변환기와 같은 규칙): 사출 LOT 을 바로 잇지 않는다.
+        #      원문은 원자재 사용(보빈, LOT 없음)으로 남기고, 날짜는 RPC 가 '15일 안 같은 보빈 날짜를 쓴 스티칭 LOT' 을 찾는 열쇠로만 쓴다.
+        if self.process == "IMEB3_WINDING":
+            keep, bob = [], []
+            for i in d["inputs"]:
+                if i.get("component") == "BOBBIN":
+                    bob.append(i)
+                else:
+                    keep.append(i)
+            d["inputs"] = keep
+            d["ba_bobbin_dates"] = sorted({i["lot_date"] for i in bob if i.get("lot_date")})
+            for i in bob:
+                d["materials"].append({"material": "IMEB3_BOBBIN", "lot_date": None, "raw": i.get("raw") or i.get("lot_date"),
+                                       "qty": None, "unit": None, "spindle": None,
+                                       "note": "BA 보빈 날짜는 스티칭 일보 매칭 근거로만 사용(사출 LOT 직접 연결 안 함)"})
         d["reason"] = self.reason or f"작업일보 입력({self.source.method}) {self.source.file or ''} p{self.source.page or ''}".strip()
         return d
