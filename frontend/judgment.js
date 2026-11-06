@@ -39,7 +39,7 @@
   }
 
   // ---- 상태
-  let queue = [], selected = new Set(), openId = null, suggestion = null, images = [], filter = '';
+  let queue = [], selected = new Set(), openId = null, suggestion = null, images = [], filter = '', kindFilter = '', batch = false, posPts = {};
 
   function css() {
     const s = document.createElement('style');
@@ -66,7 +66,11 @@
 .jq-actions button.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
 .jq-login{display:grid;gap:4px;margin-top:6px}
 .jl-ai{font-size:10px;padding:0 4px;border-radius:8px;margin-left:4px}
-.jl-ai.y{background:#e8f5e9;color:#2e7d32} .jl-ai.n{background:#ffebee;color:#c62828}`;
+.jl-ai.y{background:#e8f5e9;color:#2e7d32} .jl-ai.n{background:#ffebee;color:#c62828}
+.jq-chips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 2px;align-items:center}.jq-chips button{padding:2px 9px;border-radius:12px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:11px}.jq-chips button.on{background:var(--dark);color:#fff;border-color:var(--dark)}
+.jq-row .jq-main:hover{background:#f3f7fb;border-radius:6px}.jq-open{flex:none;align-self:center;font-size:11px;padding:3px 8px;border-radius:12px;border:1px solid var(--blue);color:var(--blue);background:#fff;cursor:pointer;white-space:nowrap}.jq-open.on{background:var(--blue);color:#fff}
+.jq-pt{width:100%;border-collapse:collapse;font-size:11px;margin:4px 0}.jq-pt th,.jq-pt td{border:1px solid #e3e8ec;padding:2px 4px;text-align:center}.jq-pt td.ng{color:#d03b3b;font-weight:700}.jq-pt td.warn{color:#b77700;font-weight:700}.jq-pt input{width:58px;padding:1px 3px;font-size:11px;border:1px solid #e7ad00;border-radius:4px;text-align:right}.jq-pt input.chg{background:#eaf7ea;border-color:#5cb85c}
+.jq-link{font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer}`;
     document.head.appendChild(s);
   }
 
@@ -78,19 +82,26 @@
   }
   function visible() {
     const f = filter.trim().toUpperCase();
-    return f ? queue.filter(q => [q.lot_code, q.model_code, q.stage_label, q.title, q.item_date].join(' ').toUpperCase().includes(f)) : queue;
+    const k = kindFilter ? queue.filter(q => q.kind === kindFilter) : queue;
+    return f ? k.filter(q => [q.lot_code, q.model_code, q.stage_label, q.title, q.item_date].join(' ').toUpperCase().includes(f)) : k;
   }
   function renderQueue() {
     const box = $('#judgeQueue'); if (!box) return;
     const rows = visible();
     const sel = [...selected].filter(id => queue.some(q => q.item_id === id));
-    box.innerHTML = `<div class="review-item"><div class="jq-head"><b>사람 판단 필요 ${queue.length}건</b><input id="jqFilter" placeholder="LOT·모델·공정 거르기" value="${esc(filter === '' ? '' : filter)}"></div>
-      <small>판독값 확인 · 판독 불가 검사 LOT · 생산 이벤트 · 초품 위치도 경계/불량. 판단은 팀 표에 남고 LOT 에 연결됩니다.${sel.length > 1 ? ` <b>선택 ${sel.length}건 일괄 판단</b>` : ''}</small></div>`
+    const counts = {}; queue.forEach(q => counts[q.kind] = (counts[q.kind] || 0) + 1);
+    box.innerHTML = `<div class="review-item"><div class="jq-head"><b>사람 판단 필요 ${queue.length}건</b><input id="jqFilter" placeholder="LOT·모델·날짜 거르기" value="${esc(filter === '' ? '' : filter)}"></div>
+      <div class="jq-chips"><button data-kind="" class="${kindFilter ? '' : 'on'}">전체 ${queue.length}</button>${Object.keys(KIND).filter(k => counts[k]).map(k => `<button data-kind="${k}" class="${kindFilter === k ? 'on' : ''}">${esc(KIND[k])} ${counts[k]}</button>`).join('')}
+      <label style="margin-left:auto;font-size:11px;display:flex;gap:3px;align-items:center;cursor:pointer"><input type="checkbox" id="jqBatch" ${batch ? 'checked' : ''}> 여러 건 한꺼번에</label></div>
+      <small>항목을 누르면 아래에 확인·정정 칸이 열립니다. 판단은 팀 표에 남고 LOT 에 연결됩니다. 초품 위치도는 경계·불량이 있는 날마다 1건씩 올라옵니다.${batch && sel.length > 1 ? ` <b>선택 ${sel.length}건 일괄 판단</b>` : ''}</small></div>`
       + (rows.length ? rows.slice(0, 60).map(q => `<div class="review-item" data-id="${esc(q.item_id)}"><div class="jq-row">
-          <input type="checkbox" data-sel="${esc(q.item_id)}" ${selected.has(q.item_id) ? 'checked' : ''} title="같은 종류끼리 20건까지 일괄 판단">
-          <div class="jq-main" data-open="${esc(q.item_id)}"><span class="jq-tag">${esc(q.stage_label)}</span><span class="jq-tag">${esc(KIND[q.kind])}</span><b>${esc(q.model_code || '')} ${esc(q.item_date || '')}</b>${q.lot_code ? ` · LOT ${esc(q.lot_code)}` : ''}<br><small>${esc(q.title)}</small></div></div>
-          ${openId === q.item_id ? card(q) : ''}</div>`).join('') + (rows.length > 60 ? `<div class="review-item"><small>외 ${rows.length - 60}건 — 위 칸에 LOT·모델로 거르세요</small></div>` : '')
+          ${batch ? `<input type="checkbox" data-sel="${esc(q.item_id)}" ${selected.has(q.item_id) ? 'checked' : ''} title="같은 종류끼리 20건까지 일괄 판단">` : ''}
+          <div class="jq-main" data-open="${esc(q.item_id)}"><span class="jq-tag">${esc(q.stage_label)}</span><span class="jq-tag">${esc(KIND[q.kind])}</span><b>${esc(q.model_code || '')} ${esc(q.item_date || '')}</b>${q.lot_code ? ` · LOT ${esc(q.lot_code)}` : ''}<br><small>${esc(q.title)}${q.kind === 'POSITION' && q.current_value ? ' · 최대 ⌀' + esc(Number(q.current_value).toFixed(3)) : ''}</small></div>
+          <button class="jq-open ${openId === q.item_id ? 'on' : ''}" data-open="${esc(q.item_id)}">${openId === q.item_id ? '닫기 ▴' : '확인·정정 ▸'}</button></div>
+          ${openId === q.item_id ? card(q) : ''}</div>`).join('') + (rows.length > 60 ? `<div class="review-item"><small>외 ${rows.length - 60}건 — 위 칸이나 종류 칩으로 거르세요</small></div>` : '')
         : '<div class="review-item"><small>판단할 항목 없음</small></div>');
+    box.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => { kindFilter = b.dataset.kind; renderQueue() });
+    const bt = $('#jqBatch'); if (bt) bt.onchange = () => { batch = bt.checked; if (!batch) selected.clear(); renderQueue() };
     const fi = $('#jqFilter'); if (fi) fi.oninput = e => { filter = e.target.value; const pos = e.target.selectionStart; renderQueue(); const n = $('#jqFilter'); n.focus(); n.setSelectionRange(pos, pos) };
     box.querySelectorAll('[data-sel]').forEach(c => c.onchange = () => {
       const q = queue.find(x => x.item_id === c.dataset.sel);
@@ -108,7 +119,7 @@
   function detailList(q) {
     const d = q.detail || {};
     const items = Object.entries(d).filter(([k, v]) => v !== null && v !== '' && k !== 'points' && DETAIL[k]).map(([k, v]) => `<dt>${esc(DETAIL[k])}</dt><dd>${esc(typeof v === 'boolean' ? (v ? '예' : '아니오') : (VALUE_KO[v] || v))}</dd>`);
-    if (Array.isArray(d.points)) items.push(`<dt>벗어난 점</dt><dd>${d.points.map(p => `${p.side === 'L' ? '좌' : '우'}${p.no} ⌀${p.pos_xy} ${p.status}`).map(esc).join(', ')}</dd>`);
+    if (Array.isArray(d.points) && q.kind !== 'POSITION') items.push(`<dt>벗어난 점</dt><dd>${d.points.map(p => `${p.side === 'L' ? '좌' : '우'}${p.no} ⌀${p.pos_xy} ${p.status}`).map(esc).join(', ')}</dd>`);
     return `<dl>${items.join('')}</dl>`;
   }
   function card(q) {
@@ -116,6 +127,7 @@
     const n = [...selected].filter(id => id !== q.item_id && queue.some(x => x.item_id === id)).length;
     return `<div class="jq-card" id="jqCard">
       ${detailList(q)}
+      ${q.kind === 'POSITION' ? `<div id="jqPos"><small>측정값 불러오는 중…</small></div><div style="margin:4px 0"><button class="jq-link" id="jqShowPos" type="button">📍 위치도 그림에서 이 날 보기</button></div>` : ''}
       <div class="jq-dec">${Object.entries(dec).map(([k, v]) => `<button data-dec="${k}">${esc(v)}</button>`).join('')}</div>
       <div id="jqExtra"></div>
       <label>판단 근거 메모 (5~500자, 실명·연락처 금지) <span id="jqCount">0/500</span></label>
@@ -127,12 +139,30 @@
       <div class="jq-actions"><button id="jqSuggest">AI 제안 받기</button><button id="jqSave" class="primary">판단 저장${n ? ` (+선택 ${n}건)` : ''}</button><button id="jqClose">닫기</button></div>
       <div id="jqMsg" class="jq-msg"></div></div>`;
   }
+  async function posTable(q, edit) {
+    const box = $('#jqPos'); if (!box) return;
+    let rows = posPts[q.item_id];
+    if (!rows) {
+      try { rows = await (await fetch(API + `/api/position-checks?model=${encodeURIComponent(q.model_code)}&from=${q.item_date}&to=${q.item_date}`)).json() } catch (e) { box.innerHTML = '<small>측정값을 불러오지 못했습니다</small>'; return }
+      posPts[q.item_id] = rows = rows.filter(r => String(r.check_id) === String(q.target_id));
+    }
+    const g = (side, no) => rows.find(r => r.side === side && r.sample_no === no);
+    const nos = [...new Set(rows.map(r => r.sample_no))].sort((a, b) => a - b);
+    const cell = (r, ax) => { if (!r) return '<td>—</td>'; const v = ax === 'X' ? (r.raw_x ?? r.x) : (r.raw_y ?? r.y); return edit ? `<td><input data-pc="${r.side}|${r.sample_no}|${ax}" data-orig="${esc(v)}" value="${esc(v)}" inputmode="decimal"></td>` : `<td>${esc(v)}</td>` };
+    const st = r => r ? `<td class="${r.status === '불량' ? 'ng' : r.status === '경계' ? 'warn' : ''}">${Number(r.pos_xy).toFixed(3)} ${esc(r.status || '')}</td>` : '<td>—</td>';
+    box.innerHTML = `<table class="jq-pt"><tr><th>NO</th><th>좌 X</th><th>좌 Y</th><th>좌 위치도</th><th>우 X</th><th>우 Y</th><th>우 위치도</th></tr>${nos.map(n => `<tr><td><b>${n}</b></td>${cell(g('L', n), 'X')}${cell(g('L', n), 'Y')}${st(g('L', n))}${cell(g('R', n), 'X')}${cell(g('R', n), 'Y')}${st(g('R', n))}</tr>`).join('')}</table>`
+      + (edit ? '<small>원본과 다르게 읽힌 칸만 고치세요(초록 = 바뀐 칸). 원문 칸은 그대로 남고 측정값만 정정됩니다. 판정은 저장 후 DB 기준으로 다시 계산됩니다.</small>' : '')
+      + (rows[0]?.note ? `<div class="jq-msg">📝 ${esc(rows[0].note)}</div>` : '');
+    box.querySelectorAll('[data-pc]').forEach(i => i.oninput = () => i.classList.toggle('chg', i.value.trim() !== i.dataset.orig));
+  }
   function bindCard(q) {
     if (!q) return;
     let decision = null;
+    if (q.kind === 'POSITION') { posTable(q, false); const sp = $('#jqShowPos'); if (sp) sp.onclick = () => window.m13ShowPosition ? window.m13ShowPosition(q.model_code, q.item_date) : (location.href = `index.html?proc=CA&view=position&model=${q.model_code}&date=${q.item_date}`) }
     const extra = () => {
       const x = $('#jqExtra'); let h = '';
-      if (decision === 'CORRECTED' && q.kind === 'POSITION') h += `<label>정정값 (좌우|시료|축|값, 예 L|1|X|2.105)</label><input type="text" id="jqVal" placeholder="L|1|X|2.105">`;
+      if (q.kind === 'POSITION') posTable(q, decision === 'CORRECTED');
+      if (decision === 'CORRECTED' && q.kind === 'POSITION') { }
       else if (decision === 'CORRECTED') h += `<label>정정값 (원문 칸은 그대로 남음)</label><input type="text" id="jqVal" value="${esc(q.current_value || '')}">`;
       if (q.kind === 'EVENT' && decision === 'VERIFIED') h += `<label>설명 정정 (선택 — 비우면 그대로)</label><input type="text" id="jqVal" placeholder="${esc(q.current_value || '')}">`;
       if (q.kind === 'INSPECTION_LOT' && decision === 'CONFIRMED') h += `<label>CA 제품 LOT 코드 (원본에서 직접 읽은 값만 · 추정 금지)</label><input type="text" id="jqLot" placeholder="예 260903D1">`;
@@ -168,12 +198,13 @@
       const note = $('#jqNote').value.trim();
       if (!decision) { msg.textContent = '결정 버튼을 먼저 고르세요'; return }
       if (note.length < 5) { msg.textContent = '메모를 5자 이상 적어 주세요'; return }
-      const val = $('#jqVal')?.value.trim() || null, basis = $('#jqBasis')?.value || null, lot = $('#jqLot')?.value.trim().toUpperCase() || null;
-      if (decision === 'CORRECTED' && !val) { msg.textContent = '정정값을 적어 주세요'; return }
+      const posVals = q.kind === 'POSITION' && decision === 'CORRECTED' ? [...document.querySelectorAll('#jqPos [data-pc]')].filter(i => i.value.trim() !== i.dataset.orig).map(i => i.dataset.pc + '|' + i.value.trim()) : null;
+      const val = posVals ? (posVals[0] || null) : ($('#jqVal')?.value.trim() || null), basis = $('#jqBasis')?.value || null, lot = $('#jqLot')?.value.trim().toUpperCase() || null;
+      if (decision === 'CORRECTED' && !val) { msg.textContent = q.kind === 'POSITION' ? '표에서 고칠 칸의 값을 바꿔 주세요' : '정정값을 적어 주세요'; return }
       if ((decision === 'CORRECTED' || decision === 'REJECTED') && !basis) { msg.textContent = '사유를 골라 주세요'; return }
       if (q.kind === 'POSITION' && decision === 'CORRECTED') {
-        const m = /^([LR])\|(\d+)\|([XY])\|(-?\d+(?:\.\d{1,3})?)$/i.exec(val || '');
-        if (!m) { msg.textContent = '정정값 형식: 좌우|시료|축|값 (소수 3자리까지)'; return }
+        const badV = posVals.find(v => !/^([LR])\|(\d+)\|([XY])\|(-?\d+(?:\.\d{1,3})?)$/i.test(v));
+        if (badV) { msg.textContent = '숫자(소수 3자리까지)만 넣어 주세요: ' + badV.split('|').slice(0, 3).join(' '); return }
       }
       if (q.kind === 'INSPECTION_LOT' && decision === 'CONFIRMED' && !/^\d{6}[DN]\d+$/.test(lot || '')) { msg.textContent = 'LOT 코드 형식: YYMMDD+D/N+순번 (예 260903D1)'; return }
       const ids = [q.item_id, ...[...selected].filter(id => id !== q.item_id && queue.some(x => x.item_id === id))];
@@ -181,7 +212,10 @@
         ai_suggestion: suggestion?.decision ? { decision: suggestion.decision, reason: suggestion.reason, model: suggestion.model } : null };
       msg.className = 'jq-msg'; msg.textContent = '저장 중…';
       try {
-        const r = await post('/api/judgment', body);
+        let r;
+        if (posVals && posVals.length > 1) { r = { saved: 0, results: [] }; for (const v of posVals) { const x = await post('/api/judgment', { ...body, item_ids: [q.item_id], value: v }); r.saved += x.saved; r.results.push(...x.results) } }
+        else r = await post('/api/judgment', body);
+        if (q.kind === 'POSITION') delete posPts[q.item_id];
         const bad = r.results.filter(x => !x.ok);
         msg.className = bad.length ? 'jq-msg err' : 'jq-msg ok';
         msg.textContent = `저장 ${r.saved}건` + (bad.length ? ` · 실패 ${bad.length}건: ${bad[0].error}` : '');

@@ -384,7 +384,7 @@ function renderChat(){
   for(const conversation of all){const item=document.createElement('div'),title=document.createElement('div'),name=document.createElement('b'),count=document.createElement('small'),meta=document.createElement('span');item.className='history-item '+(conversation.id===current.id?'active':'');item.dataset.id=String(conversation.id);title.className='history-title';name.textContent=conversation.title||'대화';count.textContent=`${conversation.messages?.length||0} messages`;meta.className='history-meta';meta.textContent=conversation.updated||'';title.append(name,count);item.append(title,meta);item.onclick=()=>{archiveCurrent();const selected=chats.find(c=>String(c.id)===item.dataset.id);if(selected){current=JSON.parse(JSON.stringify(selected));store();renderChat()}};history.append(item)}
 }
 function answer(q){return '서버에서 답변을 받지 못했습니다. 연결 상태를 확인한 뒤 다시 질문해 주세요.'}
-$$('.model button').forEach(b=>b.onclick=()=>{variant=b.dataset.v;render()});
+$$('.model button').forEach(b=>b.onclick=()=>{variant=b.dataset.v;render()});window.m13ShowPosition=(m,d)=>{processFilter='CA';caView='position';variant=['IV','OV','HSV'].includes(m)?m:'ALL';if(d){axisStart=axisEnd=d;axisAuto=false;axisPreset='1';$('#axisStart').value=d;$('#axisEnd').value=d;$('#rangePreset').value='1'}positionRows=null;render()};
 $$('.step[data-proc]').forEach(b=>b.onclick=()=>{processFilter=b.dataset.proc==='ALL'?'ALL':processFilter===b.dataset.proc?'ALL':b.dataset.proc;render()});
 $$('.examples button').forEach(b=>b.onclick=()=>{$('#question').value=b.textContent;autoGrow();$('#chatForm').requestSubmit()});
 function autoGrow(){const q=$('#question');q.style.height='auto';q.style.height=Math.min(q.scrollHeight,130)+'px'}
