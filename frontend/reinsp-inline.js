@@ -12,7 +12,7 @@
     return `<tr data-ri="${i}" data-lj="${j}"><td><input class="ri_mark" value="${e(l.mark)}" style="width:70px"></td>
       <td><input class="ri_box" type="number" min="0" value="${e(l.box_count ?? '')}" style="width:60px"></td>
       <td><input class="ri_ea" type="number" min="0" value="${e(l.qty_ea ?? '')}" style="width:80px"></td>
-      <td><input class="ri_ca" list="ri_ca_${i}_${j}" value="${e(l.ca_lot_code || '')}" placeholder="${l.lot_date ? '날짜 ' + e(l.lot_date) + ' · LOT 고르기' : '못 읽음 → 비우면 미연결'}" style="width:110px${l.ca_lot_code ? '' : ';background:#fff3cd'}">
+      <td><input class="ri_ca" list="ri_ca_${i}_${j}" value="${e(l.ca_lot_code || '')}" placeholder="${l.lot_date ? '비우면 ' + e(l.lot_date.slice(2).replace(/-/g, '')) + 'D1 (CA 일보 미확인 LOT)' : '못 읽음 → 비우면 미연결'}" style="width:110px${l.ca_lot_code ? '' : ';background:#fff3cd'}">
         <datalist id="ri_ca_${i}_${j}">${cands.map(c => `<option value="${e(c)}">`).join('')}</datalist><br><small class="muted">${e(l.how || '')}</small></td>
       <td><select class="ri_prior">${opt('ALL', l.prior_run_id, `본검사 전부${l.prior_runs ? ' (' + l.prior_runs + '건)' : ''}`)}${opt('NONE', l.prior_run_id, '연결 안 함')}</select></td>
       <td><button class="ghost small" type="button" data-rdel="${i}.${j}">빼기</button></td></tr>`;
@@ -45,7 +45,7 @@
   }
   function render() {
     const box = document.getElementById('reInline'); if (!box) return;
-    box.innerHTML = list.length ? `<h4 style="margin:14px 0 4px">재검사 — 비고란에서 뺀 항목 ${list.length}건 <small class="muted">(같은 판독에서 뺐습니다. 고친 뒤 한 건씩 저장 · CA LOT 을 비우면 미연결로 저장되고 '확인 필요'에 올라감)</small></h4>` + list.map(card).join('') : '';
+    box.innerHTML = list.length ? `<h4 style="margin:14px 0 4px">재검사 — 비고란에서 뺀 항목 ${list.length}건 <small class="muted">(같은 판독에서 뺐습니다. 고친 뒤 한 건씩 저장 · CA LOT 칸이 비어도 마킹코드로 날짜를 알면 그 날 CA LOT(없으면 'CA 작업일보 미확인' LOT)에 FK, 못 읽은 마킹만 미연결)</small></h4>` + list.map(card).join('') : '';
     box.querySelectorAll('[data-rsave]').forEach(b => b.onclick = () => save(+b.dataset.rsave));
     box.querySelectorAll('[data-radd]').forEach(b => b.onclick = () => { const i = +b.dataset.radd; read(i); list[i].lots.push({ mark: '', box_count: null, qty_ea: null, ca_lot_code: null, prior_run_id: 'NONE' }); render() });
     box.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => { const [i, j] = b.dataset.rdel.split('.').map(Number); read(i); list[i].lots.splice(j, 1); render() });
@@ -62,7 +62,7 @@
     if (r.inspector_masked && !/\*/.test(r.inspector_masked) && r.inspector_masked.length > 1) r.inspector_masked = r.inspector_masked[0] + '*'.repeat(Math.max(1, r.inspector_masked.length - 2)) + r.inspector_masked.slice(-1);
     const note = [r.inspection_content ? `[검사내용] ${r.inspection_content}` : '', r.inspector_masked ? `검사자 ${r.inspector_masked}` : '', r.remark_raw || ''].filter(Boolean).join(' · ').slice(0, 1000);
     const body = { model: r.model, inspection_date: r.inspection_date, method: r.method, qty_ea: r.qty_ea, raw_note: note, replace: false,
-      lots: lots.map(l => ({ lot_code: l.ca_lot_code || '', lot_code_raw: l.mark || null, box_count: l.box_count, qty_ea: l.qty_ea, prior_run_id: l.ca_lot_code ? (l.prior_run_id || 'ALL') : 'NONE' })),
+      lots: lots.map(l => ({ lot_code: l.ca_lot_code || '', lot_code_raw: l.mark || null, lot_date: l.ca_lot_code ? null : (l.lot_date || null), box_count: l.box_count, qty_ea: l.qty_ea, prior_run_id: l.ca_lot_code ? (l.prior_run_id || 'ALL') : 'NONE' })),
       findings: r.defects.filter(d => d.name).map(d => ({ name_raw: d.name, qty: d.qty })),
       source: { via: '최종검사 일보 판독 비고(⑦ 탭)', file, inspection_content: r.inspection_content || null, inspector_masked: r.inspector_masked || null, ai_read: true } };
     st.textContent = '저장 중…'; st.className = 'ri_st muted';

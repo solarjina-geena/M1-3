@@ -14,7 +14,7 @@ import uuid
 import anthropic
 from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..agent.claude_agent import chat as agent_chat
 from ..fishbone import to_rows
@@ -926,6 +926,7 @@ class ReinspFinding(BaseModel):
 class ReinspLot(BaseModel):
     lot_code: str                          # CA 제품 LOT (사람이 고름)
     lot_code_raw: Optional[str] = None     # 비고 원문 마킹코드
+    lot_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")   # CA LOT 을 못 골랐을 때 마킹코드 조견표 날짜 → DB 가 'CA 작업일보 미확인' LOT 으로 FK
     box_count: Optional[int] = None
     qty_ea: Optional[int] = None
     prior_run_id: str                      # 본검사 inspection_run_id 또는 'NONE'
