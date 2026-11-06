@@ -538,6 +538,31 @@ class SupabaseRepository(Repository):
         payload.setdefault("actor", settings.actor)
         return self.c.rpc("m13_position_void", {"p": payload})
 
+    # ---------------------------------------------------------------- 사출 보빈 초품 위치도
+    def bobbin_position_checks(self, model: str | None = None, date_from: str | None = None, date_to: str | None = None) -> list[dict]:
+        """뷰 m13_bobbin_position_checks: 캐비티·좌우별 X/Y, 위치도·판정(DB 기준 BOBBIN-POSITION-A1-3), BB LOT."""
+        params: dict[str, Any] = {"order": "check_date.asc,variant.asc,side.asc,sample_no.asc"}
+        if model:
+            params["variant"] = f"eq.{model}"
+        _date_filter(params, "check_date", date_from, date_to)
+        return self.c.select("m13_bobbin_position_checks", params, limit=20000)
+
+    def bobbin_position_entries(self, model: str | None = None) -> list[dict]:
+        params: dict[str, Any] = {"order": "recorded_at.desc"}
+        if model:
+            params["model_code"] = f"eq.{model}"
+        return self.c.select("m13_bobbin_position_entries", params, limit=2000)
+
+    def bobbin_position_save(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_bobbin_position_save", {"p": payload})
+
+    def bobbin_position_void(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_bobbin_position_void", {"p": payload})
+
     # ---------------------------------------------------------------- 사출조건 체크시트 (관리 화면 업로드)
     def injection_sheets(self, model: str | None = None) -> list[dict]:
         """뷰 m13_injection_sheets: 저장된 체크시트 탭(= 보빈 LOT) 1장 = 1행, 실측 수·실행 FK 연결 수."""

@@ -23,6 +23,7 @@ from ..config import settings
 from ..db.supabase_client import SupabaseError
 from ..ingest import excel_csv
 from ..ingest import injection_sheet
+from ..ingest import bobbin_position
 from ..ingest.image import extract_from_image
 from ..ingest.journal_payload import JournalPayload
 from ..repository.base import PROCESS_LABEL
@@ -210,7 +211,7 @@ def journal_preview(payload: JournalPayload):
 
 STAGE_LABEL = {"IMEB3_INJECTION": "사출", "IMEB3_STITCHING": "스티칭", "IMEB3_WINDING": "권선(BA)", "IMEB3_CA_PRESS": "압입(CA)",
                "IMEB3_FINAL_INSPECTION": "최종검사"}
-VIA_LABEL = {"reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기", "injection": "사출조건 체크시트"}
+VIA_LABEL = {"reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기", "injection": "사출조건 체크시트", "bobbin": "보빈 위치도 엑셀"}
 
 
 def _actor(who: dict) -> str:
@@ -529,6 +530,96 @@ def injection_sheet_void(body: InjVoidIn, authorization: Optional[str] = Header(
         raise HTTPException(400, "삭제 사유는 5~300자, 이메일·전화번호 형태 금지")
     return _wrap(_repo().injection_sheet_void, {"document_id": body.document_id, "note": note, "actor": _actor(who),
                                                 "reason": _reason("IMEB3_INJECTION", "injection", f"사출조건 탭 삭제(VOID) · {note}")})
+
+
+# ---------------------------------------------------------------- 사출 보빈 초품 위치도 (월별 엑셀, 모델별 시트)
+_BB_CACHE: dict[str, dict] = {}
+
+
+@router.post("/bobbin-position/preview")
+async def bobbin_position_preview(file: UploadFile = File(...), authorization: Optional[str] = Header(None)):
+    """보빈 초품 위치도 엑셀을 읽어 값이 든 블록(모델·날짜·주야·캐비티 16 × 좌우)을 돌려준다. 빈 양식은 건너뛰고 복사본은 표시."""
+    _admin(authorization)
+    name = _fix_name(file.filename or "upload.xlsx")
+    if not name.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(400, "xlsx 파일만 받습니다")
+    data = await file.read()
+    if len(data) > INJ_MAX_BYTES:
+        raise HTTPException(400, "파일이 너무 큽니다(30MB 이하)")
+    try:
+        res = await asyncio.to_thread(bobbin_position.read_workbook, data, name)
+    except Exception as e:
+        raise HTTPException(400, f"엑셀을 읽지 못했습니다: {e}")
+    have = {(e["model_code"], e["check_date"], e.get("shift")) for e in _repo().bobbin_position_entries()}
+    for b in res["blocks"]:
+        b["exists"] = (b["model"], b["date"], b["shift"]) in have
+    if len(_BB_CACHE) > 6:
+        _BB_CACHE.pop(next(iter(_BB_CACHE)))
+    _BB_CACHE[res["sha256"]] = res
+    return res
+
+
+class BobbinSaveIn(BaseModel):
+    sha256: str
+    keys: list[str]
+    replace: bool = False
+    notes: dict[str, str] = {}
+
+
+@router.post("/bobbin-position")
+def bobbin_position_save(body: BobbinSaveIn, authorization: Optional[str] = Header(None)):
+    """미리보기한 블록 중 고른 것을 1블록 = 초품 1회로 저장(BB LOT 사출 실행에 FK). 블록마다 따로 저장해 결과를 돌려준다."""
+    who = _admin(authorization)
+    res = _BB_CACHE.get(body.sha256)
+    if not res:
+        raise HTTPException(409, "미리보기 결과가 없습니다(서버가 다시 시작됨). 파일을 다시 미리보기 해 주세요")
+    pick = [b for b in res["blocks"] if b["key"] in set(body.keys) and not b["problem"]]
+    if not pick:
+        raise HTTPException(400, "저장할 블록이 없습니다")
+    out = []
+    for b in pick:
+        note = (body.notes.get(b["key"]) or "").strip()[:500]
+        if note and _PII.search(note):
+            out.append({"key": b["key"], "ok": False, "error": "특이사항에 이메일·전화번호 형태 금지"}); continue
+        p = {"model": b["model"], "check_date": b["date"], "shift": b["shift"], "label": b["label"], "replace": body.replace, "note": note or None,
+             "rows": [{k: r[k] for k in ("no", "lx", "ly", "rx", "ry")} for r in b["rows"]],
+             "source": {"file": res["file"], "sha256": res["sha256"], "sheet": b["sheet"], "cell": b["cell"], "entered_via": "manage.html 보빈 위치도"},
+             "actor": _actor(who),
+             "reason": _reason("IMEB3_INJECTION", "bobbin", f"보빈 초품 위치도 {b['model']} {b['date']} {b['shift'] or '주야 미기재'} 캐비티 {len(b['rows'])}개"
+                               + (" (기존 기록 바꾸기)" if body.replace else ""))}
+        try:
+            r = _repo().bobbin_position_save(p)
+            out.append({"key": b["key"], "ok": True, **r})
+        except Exception as e:
+            out.append({"key": b["key"], "ok": False, "error": str(getattr(e, "detail", None) or e)[:300]})
+    return {"saved": sum(1 for o in out if o["ok"]), "results": out}
+
+
+@router.get("/bobbin-position-checks")
+def bobbin_position_checks(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"), date_from: Optional[str] = Query(None, alias="from"),
+                           date_to: Optional[str] = Query(None, alias="to")):
+    """사출 보빈 초품 위치도(대시보드 사출 화면용 공개 읽기). 판정은 DB 뷰가 기준값으로 계산."""
+    return _wrap(_repo().bobbin_position_checks, model, date_from, date_to)
+
+
+@router.get("/bobbin-position-entries")
+def bobbin_position_entries(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$")):
+    return _wrap(_repo().bobbin_position_entries, model)
+
+
+class BobbinVoidIn(BaseModel):
+    check_id: str
+    note: str
+
+
+@router.post("/bobbin-position/void")
+def bobbin_position_void(body: BobbinVoidIn, authorization: Optional[str] = Header(None)):
+    who = _admin(authorization)
+    note = body.note.strip()
+    if not 5 <= len(note) <= 300 or _PII.search(note):
+        raise HTTPException(400, "삭제 사유는 5~300자, 이메일·전화번호 형태 금지")
+    return _wrap(_repo().bobbin_position_void, {"check_id": body.check_id, "note": note, "actor": _actor(who),
+                                                "reason": _reason("IMEB3_INJECTION", "bobbin", f"보빈 초품 위치도 삭제(VOID) · {note}")})
 
 
 @router.post("/position/void")
