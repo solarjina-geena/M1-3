@@ -50,7 +50,7 @@ TOOLS: list[dict[str, Any]] = [
     {"name": "get_position_checks", "description": "CA 초품 핀 위치도(좌·우 핀 X/Y, 기준 대비 위치도, 판정 정상·경계·불량). 기준값·판정 규칙은 DB(POSITION-A1-3). date 는 YYYY-MM-DD, 비우면 전체.",
      "input_schema": {"type": "object", "properties": {"model": {"type": "string", "enum": ["IV", "OV", "HSV"]}, "date_from": {"type": "string"}, "date_to": {"type": "string"}},
                       "additionalProperties": False}, "strict": True},
-    {"name": "get_review_queue", "description": "사람 확인이 필요한 항목(판독값 확인 필요, 최종검사 LOT 판독 불가, 생산 이벤트 확인, 초품 위치도 경계·불량). lot_code 로 좁힐 수 있다.",
+    {"name": "get_review_queue", "description": "사람 확인이 필요한 항목(판독값 확인 필요, 최종검사 LOT 판독 불가, 생산 이벤트 확인; 초품 위치도는 포함하지 않음 — 산포도 데이터). lot_code 로 좁힐 수 있다.",
      "input_schema": {"type": "object", "properties": {"model": {"type": "string", "enum": ["IV", "OV", "HSV"]}, "lot_code": {"type": "string"}},
                       "additionalProperties": False}, "strict": True},
     {"name": "get_judgment_history", "description": "사람이 내린 판단 기록(결정·근거 메모·LOT·날짜·AI 제안과 일치 여부). lot_code 나 kind(READ_VALUE/INSPECTION_LOT/EVENT/POSITION)로 좁힌다.",

@@ -93,7 +93,7 @@
     box.innerHTML = `<div class="review-item"><div class="jq-head"><b>사람 판단 필요 ${queue.length}건</b><input id="jqFilter" placeholder="LOT·모델·날짜 거르기" value="${esc(filter === '' ? '' : filter)}"></div>
       <div class="jq-chips"><button data-kind="" class="${kindFilter ? '' : 'on'}">전체 ${queue.length}</button>${Object.keys(KIND).filter(k => counts[k]).map(k => `<button data-kind="${k}" class="${kindFilter === k ? 'on' : ''}">${esc(KIND[k])} ${counts[k]}</button>`).join('')}
       <label style="margin-left:auto;font-size:11px;display:flex;gap:3px;align-items:center;cursor:pointer"><input type="checkbox" id="jqBatch" ${batch ? 'checked' : ''}> 여러 건 한꺼번에</label></div>
-      <small>항목을 누르면 아래에 확인·정정 칸이 열립니다. 판단은 팀 표에 남고 LOT 에 연결됩니다. 초품 위치도는 경계·불량이 있는 날마다 1건씩 올라옵니다.${batch && sel.length > 1 ? ` <b>선택 ${sel.length}건 일괄 판단</b>` : ''}</small></div>`
+      <small>항목을 누르면 아래에 확인·정정 칸이 열립니다. 판단은 팀 표에 남고 LOT 에 연결됩니다. 초품 위치도는 산포도 데이터라 여기 올리지 않습니다(불량이면 수정 후 같은 날 재측정으로 입력).${batch && sel.length > 1 ? ` <b>선택 ${sel.length}건 일괄 판단</b>` : ''}</small></div>`
       + (rows.length ? rows.slice(0, 60).map(q => `<div class="review-item" data-id="${esc(q.item_id)}"><div class="jq-row">
           ${batch ? `<input type="checkbox" data-sel="${esc(q.item_id)}" ${selected.has(q.item_id) ? 'checked' : ''} title="같은 종류끼리 20건까지 일괄 판단">` : ''}
           <div class="jq-main" data-open="${esc(q.item_id)}"><span class="jq-tag">${esc(q.stage_label)}</span><span class="jq-tag">${esc(KIND[q.kind])}</span><b>${esc(q.model_code || '')} ${esc(q.item_date || '')}</b>${q.lot_code ? ` · LOT ${esc(q.lot_code)}` : ''}<br><small>${esc(q.title)}${q.kind === 'POSITION' && q.current_value ? ' · 최대 ⌀' + esc(Number(q.current_value).toFixed(3)) : ''}</small></div>
