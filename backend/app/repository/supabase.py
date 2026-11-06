@@ -538,6 +538,15 @@ class SupabaseRepository(Repository):
         payload.setdefault("actor", settings.actor)
         return self.c.rpc("m13_position_void", {"p": payload})
 
+    # ---------------------------------------------------------------- 판독 실행 기록(결과보고서 비교표)
+    def ai_call_log(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_ai_call_log", {"p": payload})
+
+    def ai_calls(self, limit: int = 2000) -> list[dict]:
+        return self.c.select("m13_ai_calls", {"order": "started_at.desc"}, limit=limit)
+
     # ---------------------------------------------------------------- 사출 보빈 초품 위치도
     def bobbin_position_checks(self, model: str | None = None, date_from: str | None = None, date_to: str | None = None) -> list[dict]:
         """뷰 m13_bobbin_position_checks: 캐비티·좌우별 X/Y, 위치도·판정(DB 기준 BOBBIN-POSITION-A1-3), BB LOT."""

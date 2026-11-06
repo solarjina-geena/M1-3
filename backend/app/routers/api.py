@@ -279,10 +279,64 @@ async def _wait_for_disconnect(request: Request) -> None:
         await asyncio.sleep(0.25)
 
 
+# ---------------------------------------------------------------- 판독 실행 기록(결과보고서 비교표, 2026-11-07 사용자 요청)
+KIND_LABEL = {"INJECTION": "사출 작업일보", "STITCHING": "BS 작업일보", "ASSEMBLY": "조립 작업일보", "FINAL_INSPECTION": "최종검사 작업일보",
+              "REINSPECTION": "재검사 비고", "INJECTION_SHEET": "사출조건 체크시트", "BOBBIN_POSITION": "보빈 위치도 엑셀", "JOURNAL": "작업일보(종류 미선택)"}
+
+
+def _log_call(who: dict | None, kind: str, method: str, data: bytes | None, name: str, mime: str, t0: float, ok: bool,
+              usage: dict | None = None, items: int | None = None, blocks: int | None = None, error: str | None = None, text: str | None = None) -> None:
+    """판독 1회를 DB(extraction_run 사슬)에 남긴다. 실패해도 판독 결과에는 영향 없음."""
+    import datetime as _dt
+    import hashlib as _hl
+    import time as _t
+    try:
+        raw = data if data is not None else (text or "").encode("utf-8")
+        _repo().ai_call_log({
+            "kind": kind, "method": method, "model": settings.anthropic_model if method == "VISION_LLM" else None,
+            "parser": "backend/app/ingest" if method != "VISION_LLM" else None,
+            "started_at": _dt.datetime.fromtimestamp(t0, _dt.timezone.utc).isoformat(), "seconds": round(_t.time() - t0, 2), "ok": ok,
+            "input_tokens": (usage or {}).get("input_tokens"), "output_tokens": (usage or {}).get("output_tokens"),
+            "items": items, "blocks": blocks, "error": (error or "")[:300] or None,
+            "file": {"name": name[:150], "sha256": _hl.sha256(raw).hexdigest(), "size": len(raw), "mime": mime},
+            "actor": _actor(who) if who else None, "reason": f"[공통] 판독 실행 기록 · {KIND_LABEL.get(kind, kind)} · {name[:60]}"})
+    except Exception:  # 기록 실패는 무시
+        pass
+
+
+@router.get("/admin/ai-calls")
+def ai_calls(authorization: Optional[str] = Header(None)):
+    """판독 실행 기록: 문서 종류별 횟수·평균 토큰·평균 시간·모델(보고서 비교표) + 최근 기록."""
+    _admin(authorization)
+    rows = _wrap(_repo().ai_calls)
+    for r in rows:
+        r["kind_label"] = KIND_LABEL.get(r.get("kind") or "", r.get("kind"))
+    groups: dict[tuple, dict] = {}
+    for r in rows:
+        g = groups.setdefault((r["kind"], r["method"], r["model"]), {"kind": r["kind"], "kind_label": r["kind_label"], "method": r["method"], "model": r["model"],
+                                                                   "calls": 0, "ok": 0, "in": [], "out": [], "sec": [], "items": []})
+        g["calls"] += 1
+        if r["status"] == "COMPLETED":
+            g["ok"] += 1
+            if r.get("input_tokens") is not None: g["in"].append(r["input_tokens"])
+            if r.get("output_tokens") is not None: g["out"].append(r["output_tokens"])
+            if r.get("seconds") is not None: g["sec"].append(float(r["seconds"]))
+            if r.get("items") is not None or r.get("blocks") is not None: g["items"].append(r.get("items") if r.get("items") is not None else r.get("blocks"))
+    avg = lambda xs: round(sum(xs) / len(xs), 1) if xs else None
+    summary = [{k: v for k, v in g.items() if k not in ("in", "out", "sec", "items")} | {
+        "avg_input_tokens": avg(g["in"]), "avg_output_tokens": avg(g["out"]), "avg_total_tokens": avg([a + b for a, b in zip(g["in"], g["out"])]),
+        "sum_input_tokens": sum(g["in"]), "sum_output_tokens": sum(g["out"]),
+        "avg_seconds": avg(g["sec"]), "min_seconds": min(g["sec"]) if g["sec"] else None, "max_seconds": max(g["sec"]) if g["sec"] else None,
+        "avg_items": avg(g["items"])} for g in groups.values()]
+    return {"summary": sorted(summary, key=lambda x: (x["method"] != "VISION_LLM", x["kind"] or "")), "rows": rows[:300], "total": len(rows)}
+
+
 @router.post("/journal/preview-image")
 async def journal_preview_image(request: Request, file: UploadFile = File(...), authorization: Optional[str] = Header(None),
                                 kind: Optional[str] = Query(None, pattern="^(INJECTION|STITCHING|ASSEMBLY|FINAL_INSPECTION)$")):
-    _admin(authorization)  # Anthropic 사용량이 드는 요청이므로 로그인(또는 관리자 토큰) 없이는 받지 않는다
+    who = _admin(authorization)  # Anthropic 사용량이 드는 요청이므로 로그인(또는 관리자 토큰) 없이는 받지 않는다
+    import time as _t
+    t0 = _t.time()
     data = await file.read()
     name = (file.filename or "image").lower()
     media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif", "pdf": "application/pdf"}.get(name.rsplit(".", 1)[-1])
@@ -295,8 +349,14 @@ async def journal_preview_image(request: Request, file: UploadFile = File(...), 
         if ocr_task in done:
             disconnect_task.cancel()
             await asyncio.gather(disconnect_task, return_exceptions=True)
-            out = await ocr_task
+            try:
+                out = await ocr_task
+            except Exception as e:
+                await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, file.filename or "image", media, t0, False, error=str(e))
+                raise
             out["items"] = _mark_existing(out.get("items") or [])
+            await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, file.filename or "image", media, t0, True,
+                                    usage=out.get("usage"), items=len(out.get("items") or []))
             return {"file": file.filename, **out}
         ocr_task.cancel()
         await asyncio.gather(ocr_task, return_exceptions=True)
@@ -444,7 +504,9 @@ INJ_MAX_BYTES = 30 * 1024 * 1024
 async def injection_sheet_preview(file: UploadFile = File(...), model: str = Query(..., pattern="^(IV|OV|HSV)$"),
                                   authorization: Optional[str] = Header(None)):
     """체크시트 엑셀을 읽어 탭(= 보빈 LOT)별 실측 수·양식 검사·기준 차이를 돌려준다. 이미지는 읽지 않는다."""
-    _admin(authorization)
+    who = _admin(authorization)
+    import time as _t
+    t0 = _t.time()
     name = _fix_name(file.filename or "upload.xlsx")
     if not name.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(400, "xlsx 파일만 받습니다(.xls 는 엑셀에서 xlsx 로 저장해 주세요)")
@@ -455,6 +517,8 @@ async def injection_sheet_preview(file: UploadFile = File(...), model: str = Que
         res = await asyncio.to_thread(injection_sheet.read_workbook, data, name, model)
     except Exception as e:  # 엑셀이 아닌 파일 등
         raise HTTPException(400, f"엑셀을 읽지 못했습니다: {e}")
+    await asyncio.to_thread(_log_call, who, "INJECTION_SHEET", "EXCEL_PARSER", data, name, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", t0, True,
+                            items=sum(len(t["obs"]) for t in res["tabs"]), blocks=len(res["tabs"]))
     existing = {(s["model_code"], s["tab"]) for s in _repo().injection_sheets(model)}
     for t in res["tabs"]:
         t["exists"] = (model, t["tab"]) in existing
@@ -540,7 +604,9 @@ _BB_CACHE: dict[str, dict] = {}
 @router.post("/bobbin-position/preview")
 async def bobbin_position_preview(file: UploadFile = File(...), authorization: Optional[str] = Header(None)):
     """보빈 초품 위치도 엑셀을 읽어 값이 든 블록(모델·날짜·주야·캐비티 16 × 좌우)을 돌려준다. 빈 양식은 건너뛰고 복사본은 표시."""
-    _admin(authorization)
+    who = _admin(authorization)
+    import time as _t
+    t0 = _t.time()
     name = _fix_name(file.filename or "upload.xlsx")
     if not name.lower().endswith((".xlsx", ".xlsm")):
         raise HTTPException(400, "xlsx 파일만 받습니다")
@@ -551,6 +617,8 @@ async def bobbin_position_preview(file: UploadFile = File(...), authorization: O
         res = await asyncio.to_thread(bobbin_position.read_workbook, data, name)
     except Exception as e:
         raise HTTPException(400, f"엑셀을 읽지 못했습니다: {e}")
+    await asyncio.to_thread(_log_call, who, "BOBBIN_POSITION", "EXCEL_PARSER", data, name, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", t0, True,
+                            items=sum(len(b["rows"]) for b in res["blocks"]), blocks=len(res["blocks"]))
     have = {(e["model_code"], e["check_date"], e.get("shift")) for e in _repo().bobbin_position_entries()}
     for b in res["blocks"]:
         b["exists"] = (b["model"], b["date"], b["shift"]) in have
@@ -909,10 +977,15 @@ async def reinspection_read_image(file: UploadFile = File(...), base_date: Optio
         raise HTTPException(400, "jpg/png/webp 이미지만 받습니다")
     from ..ingest.image import file_name_date
     fdate = file_name_date(file.filename)
+    t0 = now
     try:
         out = await read_reinspection_note(data, media, base_date or fdate)
+        await asyncio.to_thread(_log_call, who, "REINSPECTION", "VISION_LLM", data, file.filename or "image", media, t0, True,
+                                usage=out.get("usage"), items=len(out.get("entries") or []))
         return {**out, "file_date": fdate, "base_date_used": base_date or fdate}
     except anthropic.APIError as e:
+        await asyncio.to_thread(_log_call, who, "REINSPECTION", "VISION_LLM", data, file.filename or "image", media, t0, False, error=str(e))
         raise HTTPException(502, f"AI 호출 오류: {e}") from e
     except (RuntimeError, ValueError) as e:
+        await asyncio.to_thread(_log_call, who, "REINSPECTION", "VISION_LLM", data, file.filename or "image", media, t0, False, error=str(e))
         raise HTTPException(503, str(e)) from e
