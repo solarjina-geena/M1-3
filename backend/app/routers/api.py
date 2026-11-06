@@ -401,6 +401,9 @@ class PositionIn(BaseModel):
     rows: list[PositionRow]
     replace: bool = False
     source: dict[str, Any] = {}
+    note: Optional[str] = None            # 특이사항(예: 2차라인 용접툴 교체 이후 · 용접봉 6축 중 1번 측정)
+    event: bool = False                   # 특이사항을 생산 이벤트로도(그날 CA 실행이 있을 때만)
+    event_type: Optional[str] = None      # SETUP_CHANGE / MAINTENANCE / MATERIAL_CHANGE / OTHER
 
 
 @router.get("/position-checks")
@@ -444,9 +447,15 @@ def position_save(body: PositionIn, authorization: Optional[str] = Header(None))
     who = _admin(authorization)
     p = body.model_dump()
     p["rows"] = [r for r in p["rows"] if any(r.get(k) for k in ("lx", "ly", "rx", "ry"))]
+    note = (body.note or "").strip()
+    if len(note) > 500 or _PII.search(note):
+        raise HTTPException(400, "특이사항은 500자 이내, 이메일·전화번호 형태 금지(사람 이름도 빼 주세요)")
+    if body.event_type and body.event_type not in ("SETUP_CHANGE", "MAINTENANCE", "MATERIAL_CHANGE", "OTHER"):
+        raise HTTPException(400, "이벤트 종류는 SETUP_CHANGE / MAINTENANCE / MATERIAL_CHANGE / OTHER")
+    p["note"] = note or None
     p["actor"] = _actor(who)
     p["reason"] = _reason("IMEB3_CA_PRESS", "position", f"초품 위치도 {body.model} {body.check_date} 시료 {len(p['rows'])}개"
-                          + (" (기존 기록 바꾸기)" if body.replace else ""))
+                          + (" (기존 기록 바꾸기)" if body.replace else "") + (f" · 특이사항: {note[:60]}" if note else ""))
     return _wrap(_repo().position_save, p)
 
 
