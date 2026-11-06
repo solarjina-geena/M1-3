@@ -30,7 +30,7 @@
         <td>${b.problem ? '' : `<input type="checkbox" class="bp_blk" value="${e(b.key)}" ${ok && !b.exists ? 'checked' : ''} style="width:auto">`}</td>
         <td><b>${e(b.model)}</b><br><small class="muted">${e(b.key)}</small></td><td>${e(b.label)}</td>
         <td>${e(lotOf(b))}${b.shift ? '' : '<br><small class="warn">주/야 없음 → 그날 사출 1건일 때만 연결</small>'}</td><td>${b.rows.length}</td>
-        <td class="ok">${s.n.정상}</td><td class="warn">${s.n.경계 || ''}</td><td class="err">${s.n.불량 || ''}</td><td>${s.mx.toFixed(3)}</td><td style="text-align:left;white-space:nowrap">${s.bad.length ? s.bad.map(x => `<span class="${C[x.st]}">${x.sd} #${x.no}</span>`).join(' ') : '<span class="muted">—</span>'}</td><td class="${s.diff ? 'err' : 'muted'}">${s.diff || '—'}</td>
+        <td class="ok">${s.n.정상}</td><td class="warn">${s.n.경계 || ''}</td><td class="err">${s.n.불량 || ''}</td><td>${s.mx.toFixed(3)}</td><td style="text-align:left;white-space:nowrap">${s.bad.length ? s.bad.map(x => `<span class="${C[x.st]}">${x.sd} ${String.fromCharCode(64 + x.no)}</span>`).join(' ') : '<span class="muted">—</span>'}</td><td class="${s.diff ? 'err' : 'muted'}">${s.diff || '—'}</td>
         <td><input class="bp_note" data-key="${e(b.key)}" maxlength="500" placeholder="선택" style="width:140px"></td>
         <td>${b.problem ? `<span class="err">${e(b.problem)}</span>` : b.copy_of ? `<span class="warn">복사본(= ${e(b.copy_of)}과 값 같음)</span>` : b.exists ? '<span class="warn">이미 저장됨</span>' : b.same_day_blocks > 1 ? '<span class="warn">같은 날·주야 블록 여러 개</span>' : '<span class="ok">새 블록</span>'}</td></tr>` }).join('')}</table>`;
     $('#bp_all').onchange = ev => document.querySelectorAll('.bp_blk').forEach(c => c.checked = ev.target.checked);
