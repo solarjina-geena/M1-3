@@ -214,10 +214,13 @@
   $('#r_allPrior').onclick = () => { document.querySelectorAll('#r_lots tr').forEach(setAll); setStatus('reinsp', '본검사가 여러 건인 LOT 은 "본검사 전부"로 바꿨습니다(재검일 이전 최종검사만 연결)', 'info') }; $('#r_addDefect').onclick = () => addDefect();
   $('#r_listGo').onclick = loadList; $('#r_listModel').onchange = loadList;
   addLot(); addDefect();
-  document.querySelector('#tabs [data-v="reinsp"]').addEventListener('click', () => {
+  // 재검사는 ⑦ 최종검사 탭 안에 있다(2026-11-07 사용자: 최종검사 작업일보와 재검사를 한 탭에서). 탭을 열면 불량 유형·목록을 불러온다.
+  let opened = false;
+  const onOpen = () => {
     if (!defects.length) api('/api/defect-types/final').then(d => { defects = d; $('#r_dlist').innerHTML = [...new Set(d.map(x => x.defect_name))].map(n => `<option value="${esc(n)}">`).join('');
       document.querySelectorAll('#r_defects .r_dname').forEach(i => i.dispatchEvent(new Event('input'))) }).catch(() => {});
-    loadList();
-  });
-  if (document.querySelector('#v-reinsp').classList.contains('on')) document.querySelector('#tabs [data-v="reinsp"]').click();   // ?tab=reinsp 로 열린 경우
+    loadList(); opened = true;
+  };
+  document.querySelector('#tabs [data-kind="FINAL_INSPECTION"]')?.addEventListener('click', onOpen);
+  setTimeout(() => { if (!opened && document.querySelector('#v-reinsp')?.classList.contains('on')) onOpen() }, 500);   // ?tab=final(또는 reinsp) 로 열린 경우
 })();

@@ -12,6 +12,16 @@
   const NUM = /(qty|minutes|boxes|sequence|inspection_round)$/;
 
   function getItem(k) { return (window.pendingItems || [])[k] }
+  // 고친 칸 기록: 처음 값(AI·파일이 읽은 값)을 기억해 두고, 바뀐 칸을 payload.source.human_edits 로 저장(사람 판독 확정 칸)
+  const getPath = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
+  function track(it, path, before) {
+    it._orig = it._orig || {};
+    if (!(path in it._orig)) it._orig[path] = before == null ? null : String(before);
+    const p = it.payload, src = (p.source = p.source || {}), cur = getPath(p, path), now = cur == null ? null : String(cur);
+    const others = (src.human_edits || []).filter(e => e.path !== path);
+    src.human_edits = it._orig[path] === now ? others : [...others, { path, ai: it._orig[path], value: now }];
+    it.edited = src.human_edits.length; window.journalEditCount && window.journalEditCount();
+  }
   function setPath(obj, path, val) {
     const ks = path.split('.'); let o = obj;
     for (let i = 0; i < ks.length - 1; i++) o = o[ks[i]];
@@ -43,7 +53,7 @@
         + list('materials', '원자재 LOT ★사슬', p.materials, (r, b) => `<select data-p="${b}.material">${matOpts(r.material)}</select> 날짜 ${inp(b + '.lot_date', r.lot_date, '2026-08-28', '120px')} 원문 ${inp(b + '.raw', r.raw, '8.28', '120px')} 수량 ${inp(b + '.qty', r.qty, '', '70px', 'number')} ${inp(b + '.unit', r.unit, 'kg', '45px')} 위치 ${inp(b + '.spindle', r.spindle, '1-1', '55px')}`, '원자재')
         + list('workers_raw', '작업자 (가려서 저장)', p.workers_raw, (r, b) => `${inp(b + '.name', r.name, '이름', '110px')} ${sel(b + '.role', r.role, [['', '작업자'], ['SETUP', '셋업'], ['SUPERVISOR', '반장·조장'], ['OTHER', '기타']])}`, '작업자')}
       ${list('defects', '불량', p.defects, (r, b) => `${inp(b + '.name', r.name, '불량명', '170px')} 수량 ${inp(b + '.qty', r.qty, '', '70px', 'number')} 원문 ${inp(b + '.raw', r.raw, '', '110px')}`, '불량')}
-      <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="primary" type="button" data-je-close="${k}">고친 내용 반영하고 닫기</button><span class="muted">노란 칸 = AI 가 불확실·빈칸으로 남긴 곳. 저장은 아래 'OK 항목 모두 저장'</span></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="primary" type="button" data-je-close="${k}">고친 내용 반영하고 닫기</button><span class="muted">노란 칸 = AI 가 불확실·빈칸으로 남긴 곳. 고친 칸은 'AI 값 → 사람 값'으로 DB 출처 기록에 남습니다. 저장은 화면 아래 고정된 '모두 저장' 줄</span></div>
     </div>`;
   }
 
@@ -72,7 +82,9 @@
   document.addEventListener('input', ev => {
     const t = ev.target, box = t.closest && t.closest('.je'); if (!box || !t.dataset.p) return;
     const k = +box.dataset.k, it = getItem(k); if (!it) return;
+    const before = getPath(it.payload, t.dataset.p);
     setPath(it.payload, t.dataset.p, t.value);
+    track(it, t.dataset.p, before);
     if (t.dataset.p === 'inspection_type') { if (t.value === 'REINSPECTION' && !it.payload.inspection_round) it.payload.inspection_round = 2; redraw(k); }
     t.style.background = flag(t.value) ? '#fff3cd' : '#eaf7ea'; t.style.borderColor = flag(t.value) ? '#e7ad00' : '#5cb85c';
     const st = document.querySelector(`tr[data-i="${k}"] .st-cell`); if (st && !st.dataset.edited) { st.dataset.edited = '1'; st.insertAdjacentHTML('beforeend', '<br><small class="warn">수정됨(저장 전)</small>') }
@@ -82,9 +94,9 @@
     const t = ev.target; if (!t.dataset) return;
     if (t.dataset.ed != null) { open(+t.dataset.ed); return }
     const box = t.closest && t.closest('.je'); if (!box) return; const k = +box.dataset.k, p = getItem(k).payload;
-    if (t.dataset.jeAdd) { const blank = { inputs: { process: null, component: null, lot_date: null, raw: null }, materials: { material: 'IMEB3_RESIN', lot_date: null, raw: null, qty: null, unit: null, spindle: null }, defects: { name: '', qty: null, raw: null }, lots: { raw: '', marking_code: null, boxes: null }, workers_raw: { name: '', role: null } }[t.dataset.jeAdd]; p[t.dataset.jeAdd].push(blank); redraw(k); return }
-    if (t.dataset.jeDel) { const [name, i] = t.dataset.jeDel.split('.'); p[name].splice(+i, 1); redraw(k); return }
-    if (t.dataset.jeClose != null) { summary(k); const nx = document.querySelector(`tr[data-i="${k}"]`)?.nextElementSibling; if (nx && nx.classList.contains('je-tr')) nx.remove() }
+    if (t.dataset.jeAdd) { const blank = { inputs: { process: null, component: null, lot_date: null, raw: null }, materials: { material: 'IMEB3_RESIN', lot_date: null, raw: null, qty: null, unit: null, spindle: null }, defects: { name: '', qty: null, raw: null }, lots: { raw: '', marking_code: null, boxes: null }, workers_raw: { name: '', role: null } }[t.dataset.jeAdd]; p[t.dataset.jeAdd].push(blank); track(getItem(k), t.dataset.jeAdd + '.' + (p[t.dataset.jeAdd].length - 1) + '(추가)', null); redraw(k); return }
+    if (t.dataset.jeDel) { const [name, i] = t.dataset.jeDel.split('.'); const gone = JSON.stringify(p[name][+i] || {}).slice(0, 180); p[name].splice(+i, 1); const it = getItem(k); it._orig = it._orig || {}; it._orig[name + '.' + i + '(빼기)'] = gone; (p.source = p.source || {}).human_edits = [...(p.source.human_edits || []), { path: name + '.' + i + '(빼기)', ai: gone, value: null }]; it.edited = p.source.human_edits.length; window.journalEditCount && window.journalEditCount(); redraw(k); return }
+    if (t.dataset.jeClose != null) { summary(k); const tr = document.querySelector(`tr[data-i="${k}"]`), nx = tr?.nextElementSibling; if (nx && nx.classList.contains('je-tr')) nx.remove(); if (tr) { tr.scrollIntoView({ block: 'center', behavior: 'smooth' }); tr.style.transition = 'background .8s'; tr.style.background = '#eaf7ea'; setTimeout(() => tr.style.background = '', 1200) } }
   });
   const css = document.createElement('style');
   css.textContent = `.je{font-size:12px}.je-grid{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:6px}.je label{display:inline-flex;gap:4px;align-items:center;font-weight:400}.je-wide{display:flex!important;margin:4px 0}.je-wide input{flex:1}

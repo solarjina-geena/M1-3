@@ -142,11 +142,20 @@ class WorkerName(BaseModel):
     role: Optional[Literal["OPERATOR", "SETUP", "SUPERVISOR", "OTHER"]] = Field(None, description="작업자=OPERATOR, 셋업=SETUP, 반장·조장=SUPERVISOR")
 
 
+class HumanEdit(BaseModel):
+    """관리 화면 '고치기'로 사람이 바꾼 칸: AI(또는 파일)가 읽은 값 → 사람이 확정한 값."""
+    path: str = Field(max_length=80)
+    ai: Optional[str] = Field(None, max_length=200)
+    value: Optional[str] = Field(None, max_length=200)
+
+
 class Source(BaseModel):
     method: Literal["MANUAL", "EXCEL", "CSV", "IMAGE", "FIRESTORE"] = "MANUAL"
     file: Optional[str] = None
     page: Optional[int] = None
     note: Optional[str] = None
+    # 고치기로 사람이 고친 칸(저장 때 DB 출처 기록 remark.source 에 그대로 남는다 = 사람 판독 확정 칸)
+    human_edits: list[HumanEdit] = Field(default_factory=list, max_length=100)
 
 
 class JournalPayload(BaseModel):
@@ -228,10 +237,21 @@ class JournalPayload(BaseModel):
         d.pop("inspector_raw", None)   # 실명은 저장하지 않는다
         d["workers_masked"] = [{"name": mask_person(w["name"]), "role": w.get("role") or "OPERATOR"}
                                for w in d.pop("workers_raw", None) or [] if mask_person(w.get("name"))]
+        # 고치기 기록: 이름 칸(검사자·작업자)은 AI 값·사람 값 모두 가려서 남기고, 다른 칸의 자유 문장에 섞인 이름도 가린다.
+        edits = d["source"].get("human_edits") or []
+        for e in edits:
+            if re.search(r"inspector_raw|workers_raw|name$", e.get("path") or ""):
+                raw_names += [x for x in (e.get("ai"), e.get("value")) if x]
+                e["ai"], e["value"] = mask_person(e.get("ai")) if e.get("ai") else None, mask_person(e.get("value")) if e.get("value") else None
+                e["path"] = re.sub(r"inspector_raw", "inspector_masked", re.sub(r"workers_raw", "workers_masked", e["path"]))
         if raw_names:
             for k in ("remarks_raw", "rework_note", "raw_quantity_text", "equipment_raw"):
                 d[k] = scrub_names(d.get(k), raw_names)
             d["source"]["note"] = scrub_names(d["source"].get("note"), raw_names)
+            for e in edits:
+                for k in ("ai", "value"):
+                    if e.get(k):
+                        e[k] = scrub_names(e[k], raw_names)
             for row in d["inputs"] + d["materials"] + d["defects"] + d["lots"]:
                 for k in ("raw", "note"):
                     if row.get(k):
