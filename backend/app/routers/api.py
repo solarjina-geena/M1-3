@@ -333,7 +333,10 @@ def ai_calls(authorization: Optional[str] = Header(None)):
 
 @router.post("/journal/preview-image")
 async def journal_preview_image(request: Request, file: UploadFile = File(...), authorization: Optional[str] = Header(None),
-                                kind: Optional[str] = Query(None, pattern="^(INJECTION|STITCHING|ASSEMBLY|FINAL_INSPECTION)$")):
+                                kind: Optional[str] = Query(None, pattern="^(INJECTION|STITCHING|ASSEMBLY|FINAL_INSPECTION)$"),
+                                page: Optional[int] = Query(None, ge=1, le=80)):
+    """여러 쪽 PDF 는 한 번에 보내지 않는다(2026-11-07: 최종검사 일보 PDF 6~11쪽 → 시간·길이 제한 초과).
+    page 없이 오면 쪽수만 돌려주고(Claude 호출 없음), 화면이 page=1..n 으로 한 쪽씩 다시 부른다."""
     who = _admin(authorization)  # Anthropic 사용량이 드는 요청이므로 로그인(또는 관리자 토큰) 없이는 받지 않는다
     import time as _t
     t0 = _t.time()
@@ -342,6 +345,23 @@ async def journal_preview_image(request: Request, file: UploadFile = File(...), 
     media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif", "pdf": "application/pdf"}.get(name.rsplit(".", 1)[-1])
     if not media:
         raise HTTPException(400, "jpg/png/webp/gif/pdf 만 받습니다")
+    label = file.filename or "image"
+    if media == "application/pdf":
+        import io
+        from pypdf import PdfReader, PdfWriter
+        try:
+            reader = PdfReader(io.BytesIO(data))
+            n = len(reader.pages)
+        except Exception as e:
+            raise HTTPException(400, f"PDF 를 열지 못했습니다: {e}")
+        if n > 1 and page is None:
+            return {"file": file.filename, "pdf_pages": n, "need_pages": True, "items": [], "document_type": "UNKNOWN", "uncertain_notes": [],
+                    "usage": {"input_tokens": 0, "output_tokens": 0}}
+        if page is not None:
+            if page > n:
+                raise HTTPException(400, f"PDF 는 {n}쪽입니다")
+            w = PdfWriter(); w.add_page(reader.pages[page - 1]); buf = io.BytesIO(); w.write(buf); data = buf.getvalue()
+            label = f"{file.filename or 'pdf'} p{page}"
     ocr_task = asyncio.create_task(extract_from_image(data, media, file.filename or "image", kind))
     disconnect_task = asyncio.create_task(_wait_for_disconnect(request))
     try:
@@ -352,12 +372,17 @@ async def journal_preview_image(request: Request, file: UploadFile = File(...), 
             try:
                 out = await ocr_task
             except Exception as e:
-                await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, file.filename or "image", media, t0, False, error=str(e))
+                await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, label, media, t0, False, error=str(e))
                 raise
+            if page is not None:
+                for it in out.get("items") or []:
+                    if it.get("ok") and isinstance(it.get("payload"), dict):
+                        it["payload"].setdefault("source", {})["page"] = page
             out["items"] = _mark_existing(out.get("items") or [])
-            await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, file.filename or "image", media, t0, True,
+            await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, label, media, t0, True,
                                     usage=out.get("usage"), items=len(out.get("items") or []))
-            return {"file": file.filename, **out}
+            return {"file": file.filename, "page": page, **out}
+        await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, label, media, t0, False, error="브라우저가 판독을 중단함")
         ocr_task.cancel()
         await asyncio.gather(ocr_task, return_exceptions=True)
         return Response(status_code=499)
@@ -366,7 +391,7 @@ async def journal_preview_image(request: Request, file: UploadFile = File(...), 
     except anthropic.RateLimitError as e:
         raise HTTPException(429, "Anthropic API 한도 또는 요청 제한에 도달했습니다.") from e
     except anthropic.APITimeoutError as e:
-        raise HTTPException(504, "OCR 요청이 90초 안에 끝나지 않았습니다. 파일 크기를 줄여 다시 시도해 주세요.") from e
+        raise HTTPException(504, "OCR 요청이 제한 시간(150초) 안에 끝나지 않았습니다. 사진을 한 쪽씩 올리거나 크기를 줄여 다시 시도해 주세요.") from e
     except anthropic.APIConnectionError as e:
         raise HTTPException(502, "Anthropic API에 연결하지 못했습니다.") from e
     except anthropic.APIStatusError as e:

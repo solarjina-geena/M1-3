@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from typing import Literal
 
 import anthropic
 from pydantic import BaseModel, Field, ValidationError
 
 from ..config import settings
-from .journal_payload import JournalPayload
+from .journal_payload import JournalPayload, scrub_names
 
 PROMPT = """이 이미지는 iMEB3 제조 작업일보(사출·스티칭·조립(BA 권선/CA 압입)·최종검사 중 하나)입니다.
 한 장에 여러 모델(IV/OV/HSV)이나 여러 공정·여러 라인(L1/L2)이 있으면 작업일보 항목을 여러 개로 나눠 주세요.
@@ -106,7 +107,7 @@ async def extract_from_image(data: bytes, media_type: str, filename: str, kind: 
              {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}})
     # Async 요청은 브라우저 취소/연결 종료 시 백엔드에서도 취소할 수 있게 한다.
     # 제한 시간과 재시도 횟수를 고정해 관리 화면이 무기한 대기하지 않게 한다.
-    async with anthropic.AsyncAnthropic(api_key=settings.anthropic_key, timeout=90.0, max_retries=0) as client:
+    async with anthropic.AsyncAnthropic(api_key=settings.anthropic_key, timeout=150.0, max_retries=0) as client:
         response = await client.messages.create(
             model=settings.anthropic_model,
             max_tokens=16000,
@@ -147,5 +148,11 @@ async def extract_from_image(data: bytes, media_type: str, filename: str, kind: 
             loc = ".".join(str(x) for x in first.get("loc", ()))
             items.append({"ok": False, "row": k + 1, "error": f"{first.get('msg')} (항목 {loc})",
                           "raw": jraw if isinstance(jraw, dict) else {"value": str(jraw)}})
+    # 불확실 메모에 사람 이름(검사자·작업자)이 섞여 화면에 나오지 않게 가린다(저장은 원래 안 함)
+    names = [n for j in (raw.get("journals") or []) if isinstance(j, dict)
+             for n in [j.get("inspector_raw")] + [w.get("name") for w in (j.get("workers_raw") or []) if isinstance(w, dict)] if n and isinstance(n, str)]
+    if names:
+        notes = [scrub_names(n, names) or n for n in notes]
+        notes = [re.sub(r"(['‘“\"])([가-힣])[가-힣]([가-힣])(['’”\"])", r"\1\2*\3\4", n) for n in notes]
     return {"document_type": doc_type, "items": items, "uncertain_notes": notes, "file_date": fdate,
             "usage": {"input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens}}
