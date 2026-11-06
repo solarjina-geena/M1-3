@@ -63,17 +63,31 @@ class SupabaseRepository(Repository):
         for b in sorted(by.values(), key=lambda b: (b["model"], order.get(b["class"], 9))):
             b["days"] = len(b["days"])
             b["defect_rate"] = round(b["defects"] / b["qty"] * 100, 3) if b["qty"] else None
-            b["counted_in_final_total"] = b["class"] != "재검"
+            b["counted_in_final_total"] = b["class"] == "2차"
             classes.append(b)
-        return {"classes": classes, "reinspection_lots": lots, "daily": rows,
-                "rule": "최종검사 검사량 = 1차+2차(본검사). 재검은 이미 검사한 LOT 을 다시 본 중복 검사라 따로 합산. LOT 기록 누락 재검은 '(LOT 기록 누락)' 줄로 남고 확인 필요 탭에서 CA LOT 을 넣으면 연결."}
+        for l in lots:   # 재검 LOT 별 불량률: LOT 에 붙은 불량 / LOT 수량. LOT 이 하나뿐인 재검은 재검 전체 불량을 그 LOT 의 불량으로 본다
+            dq = l.get("lot_defect_qty") or (l.get("run_defect_qty") if (l.get("lots_in_run") or 0) == 1 else 0) or 0
+            split = bool(l.get("lot_defect_qty")) or (l.get("lots_in_run") or 0) == 1   # 여러 LOT 재검인데 불량을 LOT 에 나누지 않았으면 LOT 불량률은 정하지 않음
+            l["lot_defect_rate"] = round(dq / l["lot_qty"] * 100, 3) if l.get("lot_qty") and split else None
+            l["run_defect_rate"] = round((l.get("run_defect_qty") or 0) / l["run_qty"] * 100, 3) if l.get("run_qty") and (l.get("lots_in_run") or 0) > 1 else None
+        ip: dict[str, Any] = {"order": "model_code,issue_from"}
+        if model:
+            ip["model_code"] = f"eq.{model}"
+        issues = self.c.select("m13_reinsp_issue_defects", ip, limit=1000)
+        for i in issues:
+            i["reinsp_rate"] = round(i["reinsp_defects"] / i["reinsp_qty"] * 100, 3) if i.get("reinsp_qty") else None
+            i["main_rate_since"] = round(i["main_defects_since"] / i["main_qty_since"] * 100, 3) if i.get("main_qty_since") else None
+        return {"classes": classes, "reinspection_lots": lots, "issue_defects": issues, "daily": rows,
+                "rule": "LOT 검사 수량 = 2차(통상 본검사)만. 1차 = 검사 훈련·신입·타 제품 검사자 지원·연습(합산 제외, 따로 표시). "
+                        "재검 = 불량 이슈로 검사 완료품을 다시 본 것 — 재검 LOT 별 수량·불량·불량률 따로(본검사 수량과 합치지 않음). "
+                        "이슈 뒤에는 본검사에서도 같은 불량을 검출하므로 '재검 불량 이슈' 표에서 나란히 비교."}
 
     def summary(self, model: str | None = None) -> dict:
         params = {}
         if model:
             params["model_code"] = f"eq.{model}"
         prod = self.c.select("m13_daily_production", params, limit=100000)
-        insp = self.c.select("m13_daily_inspection", params, limit=100000)
+        insp = self.c.select("m13_inspection_breakdown", params, limit=100000)
         gaps = self.c.select("m13_lot_chain_gaps", params, limit=100000)
         by_proc: dict[str, dict] = defaultdict(lambda: {"runs": 0, "qty": 0, "defects": 0, "minutes": 0, "days": set(), "models": set()})
         for r in prod:
@@ -84,14 +98,16 @@ class SupabaseRepository(Repository):
             b["minutes"] += r["work_minutes"] or 0
             b["days"].add(r["work_date"])
             b["models"].add(r["model_code"])
-        # 재검(REINSPECTION)은 이미 검사한 LOT 을 다시 본 중복 검사 → 최종검사 검사량·불량 합계에 넣지 않고 따로 집계
-        main = [r for r in insp if r["inspection_type"] != "REINSPECTION"]
-        re_ = [r for r in insp if r["inspection_type"] == "REINSPECTION"]
+        # 최종검사 검사량·불량 = 2차(통상 본검사)만. 1차(훈련·신입·지원)와 재검(불량 이슈 재선별)은 따로(사용자 규칙 2026-11-07)
+        main = [r for r in insp if r["inspection_class"] == "2차"]
+        r1 = [r for r in insp if r["inspection_class"] == "1차"]
+        re_ = [r for r in insp if r["inspection_class"] == "재검"]
+        part = lambda rs, note: {"runs": sum(r["runs"] for r in rs), "qty": sum(r["inspected_qty"] or 0 for r in rs),
+                                 "defects": sum(r["defect_qty"] or 0 for r in rs), "days": len({r["inspection_date"] for r in rs}), "note": note}
         fin = {"runs": sum(r["runs"] for r in main), "qty": sum(r["inspected_qty"] or 0 for r in main),
                "defects": sum(r["defect_qty"] or 0 for r in main), "days": len({r["inspection_date"] for r in main}),
-               "reinspection": {"runs": sum(r["runs"] for r in re_), "qty": sum(r["inspected_qty"] or 0 for r in re_),
-                                "defects": sum(r["defect_qty"] or 0 for r in re_), "days": len({r["inspection_date"] for r in re_}),
-                                "note": "재검 = 중복 검사(이미 검사한 LOT) — 위 검사량·불량에 포함하지 않음"}}
+               "first_round": part(r1, "1차 = 검사 훈련·신입·타 제품 검사자 지원·연습 — 검사량에 합치지 않음"),
+               "reinspection": part(re_, "재검 = 불량 이슈로 검사 완료품 재선별 — 검사량에 합치지 않고 따로 불량률")}
         processes = []
         for code in PROCESS_CODES:
             if code == "IMEB3_FINAL_INSPECTION":
@@ -115,13 +131,17 @@ class SupabaseRepository(Repository):
             params["model_code"] = f"eq.{model}"
         if process == "IMEB3_FINAL_INSPECTION":
             _date_filter(params, "inspection_date", date_from, date_to)
-            rows = self.c.select("m13_daily_inspection", {**params, "order": "inspection_date"}, limit=100000)
+            rows = self.c.select("m13_inspection_breakdown", {**params, "order": "inspection_date"}, limit=100000)
             agg: dict[tuple, dict] = {}
             for r in rows:
                 k = (r["inspection_date"], r["model_code"])
                 a = agg.setdefault(k, {"date": k[0], "model": k[1], "runs": 0, "qty": 0, "defects": 0,
-                                       "reinspections": 0, "reinspection_qty": 0, "reinspection_defects": 0})
-                if r["inspection_type"] == "REINSPECTION":   # 중복 검사 → 본검사 합계와 따로
+                                       "reinspections": 0, "reinspection_qty": 0, "reinspection_defects": 0, "first_round_qty": 0, "first_round_defects": 0})
+                if r["inspection_class"] == "1차":   # 훈련·신입·지원 → 검사량에 합치지 않음
+                    a["first_round_qty"] += r["inspected_qty"] or 0
+                    a["first_round_defects"] += r["defect_qty"] or 0
+                    continue
+                if r["inspection_type"] == "REINSPECTION":   # 불량 이슈 재선별 → 본검사 합계와 따로
                     a["reinspections"] += r["runs"]
                     a["reinspection_qty"] += r["inspected_qty"] or 0
                     a["reinspection_defects"] += r["defect_qty"] or 0

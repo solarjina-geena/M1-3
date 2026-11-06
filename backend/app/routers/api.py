@@ -304,6 +304,29 @@ def _log_call(who: dict | None, kind: str, method: str, data: bytes | None, name
         pass
 
 
+def _enrich_reinsp(items: list[dict]) -> list[dict]:
+    """비고에서 뺀 재검사 LOT → 최종검사를 받은 같은 모델 CA 제품 LOT(날짜 일치 1개일 때만) + 본검사 연결(재검일 이전 전부 = ALL). 추정 안 함."""
+    cache: dict[str, list[dict]] = {}
+    for r in items:
+        m = r.get("model")
+        if m not in ("IV", "OV", "HSV"):
+            continue
+        tg = cache.get(m) or cache.setdefault(m, _repo().reinspection_targets(m))
+        for l in r.get("lots") or []:
+            if l.get("lot_code"):
+                cands = sorted({t["ca_lot_code"] for t in tg if t["ca_lot_code"] == l["lot_code"]})
+            elif l.get("lot_date"):
+                cands = sorted({t["ca_lot_code"] for t in tg if t["lot_date"] == l["lot_date"]})
+            else:
+                cands = []
+            l["ca_lot_code"] = cands[0] if len(cands) == 1 else None
+            l["ca_candidates"] = cands
+            prior = [t for t in tg if l["ca_lot_code"] and t["ca_lot_code"] == l["ca_lot_code"] and (not r.get("inspection_date") or t["inspection_date"] <= r["inspection_date"])]
+            l["prior_runs"] = len(prior)
+            l["prior_run_id"] = "ALL" if prior else "NONE"
+    return items
+
+
 @router.get("/admin/ai-calls")
 def ai_calls(authorization: Optional[str] = Header(None)):
     """판독 실행 기록: 문서 종류별 횟수·평균 토큰·평균 시간·모델(보고서 비교표) + 최근 기록."""
@@ -379,6 +402,7 @@ async def journal_preview_image(request: Request, file: UploadFile = File(...), 
                     if it.get("ok") and isinstance(it.get("payload"), dict):
                         it["payload"].setdefault("source", {})["page"] = page
             out["items"] = _mark_existing(out.get("items") or [])
+            out["reinspections"] = await asyncio.to_thread(_enrich_reinsp, out.get("reinspections") or [])
             await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, label, media, t0, True,
                                     usage=out.get("usage"), items=len(out.get("items") or []))
             return {"file": file.filename, "page": page, **out}
