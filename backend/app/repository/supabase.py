@@ -486,6 +486,18 @@ class SupabaseRepository(Repository):
                     m["display_range"] = j.get("display_range")
         return out
 
+    def position_entries(self, model: str | None = None) -> list[dict]:
+        """뷰 m13_position_entries: 초품 위치도 1회 = 1행(판정 집계·CA 연결·입력 시각)."""
+        params: dict[str, Any] = {"order": "check_date.desc,model_code.asc"}
+        if model:
+            params["model_code"] = f"eq.{model}"
+        return self.c.select("m13_position_entries", params, limit=2000)
+
+    def position_void(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_position_void", {"p": payload})
+
     def position_save(self, payload: dict[str, Any]) -> dict:
         self._guard()
         payload.setdefault("actor", settings.actor)

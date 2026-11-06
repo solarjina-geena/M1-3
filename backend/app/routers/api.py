@@ -416,6 +416,28 @@ def position_spec():
     return _wrap(_repo().position_spec)
 
 
+@router.get("/position-entries")
+def position_entries(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$")):
+    """입력된 초품 위치도 목록(날짜·모델별 1행, 판정 집계)."""
+    return _wrap(_repo().position_entries, model)
+
+
+class PositionVoidIn(BaseModel):
+    check_id: str
+    note: str
+
+
+@router.post("/position/void")
+def position_void(body: PositionVoidIn, authorization: Optional[str] = Header(None)):
+    """잘못 넣은 초품 위치도 1회를 삭제(VOID). 판단 카드로 이미 판단한 기록은 DB 가 거부."""
+    who = _admin(authorization)
+    note = body.note.strip()
+    if not 5 <= len(note) <= 300 or _PII.search(note):
+        raise HTTPException(400, "삭제 사유는 5~300자, 이메일·전화번호 형태 금지")
+    return _wrap(_repo().position_void, {"check_id": body.check_id, "note": note, "actor": _actor(who),
+                                         "reason": _reason("IMEB3_CA_PRESS", "position", f"초품 위치도 삭제(VOID) · {note}")})
+
+
 @router.post("/position")
 def position_save(body: PositionIn, authorization: Optional[str] = Header(None)):
     """초품 위치도 1회 저장(quality_check 초품 + measurement). 같은 모델·날짜가 있으면 replace=true 일 때만 이전 기록 VOID."""
