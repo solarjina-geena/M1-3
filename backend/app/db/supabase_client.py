@@ -43,11 +43,25 @@ class SupabaseClient:
         if schema:
             headers["Accept-Profile"] = schema
         q = {"select": "*", **(params or {})}
-        if limit:
-            q["limit"] = str(limit)
-        r = self.http.get(f"{self.base}/{table}", headers=headers, params=q)
-        self._raise(r)
-        return r.json()
+        # Supabase(PostgREST)는 한 번에 최대 1000행만 준다(max-rows). limit 이 그보다 크면 조용히 잘리므로
+        # 1000행씩 offset 으로 끝까지 읽는다. (2026-11-06: 위치도 측정값이 10/19 에서 잘려 HSV 10/26~28 이 안 보이던 원인)
+        if "offset" in q or (limit is not None and limit <= self.PAGE):
+            if limit:
+                q["limit"] = str(limit)
+            r = self.http.get(f"{self.base}/{table}", headers=headers, params=q)
+            self._raise(r)
+            return r.json()
+        out: list[dict] = []
+        while True:
+            want = self.PAGE if limit is None else min(self.PAGE, limit - len(out))
+            r = self.http.get(f"{self.base}/{table}", headers=headers, params={**q, "limit": str(want), "offset": str(len(out))})
+            self._raise(r)
+            page = r.json()
+            out.extend(page)
+            if len(page) < want or (limit is not None and len(out) >= limit):
+                return out
+
+    PAGE = 1000
 
     def rpc(self, fn: str, payload: dict[str, Any]) -> Any:
         r = self.http.post(f"{self.base}/rpc/{fn}", headers={**self.headers, "Content-Type": "application/json"}, json=payload)
