@@ -280,14 +280,15 @@ async def _wait_for_disconnect(request: Request) -> None:
 
 
 @router.post("/journal/preview-image")
-async def journal_preview_image(request: Request, file: UploadFile = File(...), authorization: Optional[str] = Header(None)):
+async def journal_preview_image(request: Request, file: UploadFile = File(...), authorization: Optional[str] = Header(None),
+                                kind: Optional[str] = Query(None, pattern="^(INJECTION|STITCHING|ASSEMBLY|FINAL_INSPECTION)$")):
     _admin(authorization)  # Anthropic 사용량이 드는 요청이므로 로그인(또는 관리자 토큰) 없이는 받지 않는다
     data = await file.read()
     name = (file.filename or "image").lower()
     media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif", "pdf": "application/pdf"}.get(name.rsplit(".", 1)[-1])
     if not media:
         raise HTTPException(400, "jpg/png/webp/gif/pdf 만 받습니다")
-    ocr_task = asyncio.create_task(extract_from_image(data, media, file.filename or "image"))
+    ocr_task = asyncio.create_task(extract_from_image(data, media, file.filename or "image", kind))
     disconnect_task = asyncio.create_task(_wait_for_disconnect(request))
     try:
         done, _ = await asyncio.wait({ocr_task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED)

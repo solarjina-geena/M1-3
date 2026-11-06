@@ -91,7 +91,13 @@ SYSTEM = ("응답은 아래 JSON Schema 를 따르는 JSON 객체 하나만 출�
           + json.dumps(Extraction.model_json_schema(), ensure_ascii=False))
 
 
-async def extract_from_image(data: bytes, media_type: str, filename: str) -> dict:
+KIND_KO = {"INJECTION": "사출", "STITCHING": "스티칭(BS)", "ASSEMBLY": "조립(BA 권선·CA 압입)", "FINAL_INSPECTION": "최종검사"}
+
+
+async def extract_from_image(data: bytes, media_type: str, filename: str, kind: str | None = None) -> dict:
+    """kind = 관리 화면에서 고른 작업일보 탭(사출·BS·조립·최종검사). Claude 에 힌트로 주고, 읽은 종류와 다르면 경고."""
+    hint = (f"\n\n사용자가 고른 작업일보 종류: {KIND_KO[kind]} ({kind}). 이 종류로 읽되, 사진이 실제로 다른 종류면 "
+            "document_type 은 사진 그대로 적고 uncertain_notes 에 그 사실을 씁니다.") if kind in KIND_KO else ""
     if not settings.anthropic_key:
         raise RuntimeError("ANTHROPIC_API_KEY 가 backend/.env.personal 에 없습니다.")
     b64 = base64.standard_b64encode(data).decode("utf-8")
@@ -105,7 +111,7 @@ async def extract_from_image(data: bytes, media_type: str, filename: str) -> dic
             model=settings.anthropic_model,
             max_tokens=16000,
             system=SYSTEM,
-            messages=[{"role": "user", "content": [block, {"type": "text", "text": PROMPT + f"\n\n파일 이름: {filename} (이름에 날짜가 있으면 작업일·연도 추정에 참고하세요. 양식에는 연도가 없는 경우가 많습니다.)"}]}],
+            messages=[{"role": "user", "content": [block, {"type": "text", "text": PROMPT + hint + f"\n\n파일 이름: {filename} (이름에 날짜가 있으면 작업일·연도 추정에 참고하세요. 양식에는 연도가 없는 경우가 많습니다.)"}]}],
         )
     if response.stop_reason == "refusal":
         raise RuntimeError("모델이 이 요청을 거절했습니다(refusal).")
@@ -120,6 +126,8 @@ async def extract_from_image(data: bytes, media_type: str, filename: str) -> dic
         raise RuntimeError("모델 응답이 JSON 객체가 아닙니다.")
     doc_type = raw.get("document_type") if raw.get("document_type") in ("INJECTION", "STITCHING", "ASSEMBLY", "FINAL_INSPECTION") else "UNKNOWN"
     notes = [str(n) for n in raw.get("uncertain_notes") or []]
+    if kind in KIND_KO and doc_type not in (kind, "UNKNOWN"):
+        notes.insert(0, f"⚠ 고른 탭은 {KIND_KO[kind]} 작업일보인데 Claude 는 {KIND_KO.get(doc_type, doc_type)} 작업일보로 읽었습니다. 사진과 탭을 확인하세요.")
     # 작업일보 항목은 한 건씩 검증한다. 한 항목의 날짜 표기 오류가 나머지 항목까지 버리지 않게 하고,
     # 실패한 항목은 엑셀 업로드와 같은 모양(ok=False, error, raw)으로 화면에 보여 준다.
     items = []
