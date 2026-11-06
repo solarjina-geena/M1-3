@@ -53,6 +53,7 @@ button.ghost{background:none;border:1px solid var(--border);color:var(--ink2);bo
   </section>
   <section class="view" id="v-process">
     <div class="tiles" id="pTiles"></div>
+    <div class="card" id="pInspBreak" hidden><h3>검사 구분별 집계 (본검사 1차·2차 / 재검)</h3><div class="sub">재검은 이미 검사한 LOT 을 다시 본 <b>중복 검사</b>라 위 검사량 합계에 넣지 않고 따로 합산합니다. LOT 이 일보에 없으면 <b>(LOT 기록 누락)</b>으로 남고 관리자 화면 '확인 필요'에서 CA LOT 을 넣으면 연결됩니다.</div><div id="pInspBreakBody"></div></div>
     <div class="card" id="pProductionCard"><h3 id="pTitle1">일자별 생산량</h3><div class="sub">모델별. 빈 날은 기록 없음(0 아님)</div><div class="chart"><canvas id="c1"></canvas></div></div>
     <div class="card" id="pDailyDefectCard"><h3 id="pTitle2">일자별 불량 수량</h3><div class="sub">작업일보에 적힌 불량 합계(숫자로 읽힌 항목만)</div><div class="chart"><canvas id="c2"></canvas></div></div>
     <div class="card" id="pDefectCard"><h3>불량 유형별 합계</h3><p id="pDefectScope" class="muted" hidden></p><p id="pDefectStatus" class="muted" hidden aria-live="polite"></p><p id="pDefectNote" class="muted" hidden></p><div class="chart" style="height:300px"><canvas id="c3"></canvas></div><details id="pDefectDetails" hidden><summary>원래 이름별 수량 보기 (전체 유형)</summary><div id="pDefectSources"></div></details></div>
@@ -101,6 +102,22 @@ async function overview(){const s=await api('/api/summary?model='+st.model);
   const g=(await api('/api/lots/gaps?model='+st.model+'&only_gaps=true')).slice(0,20);$('#ovGaps').innerHTML=gapsTable(g)}
 function gapsTable(g){if(!g.length)return '<div class="muted">없음</div>';return `<table><tr><th>모델</th><th>CA LOT</th><th>날짜</th><th>검사</th><th>BA</th><th>스티칭</th><th>사출</th><th>수지</th><th>깊이</th><th>다음에 넣을 기록</th></tr>`+g.map(r=>`<tr><td>${r.model_code}</td><td><a href="#" onclick="trace('${r.ca_lot}','${r.model_code}');return false">${r.ca_lot}</a></td><td>${r.ca_date}</td><td class="num">${r.inspections||'—'}</td><td>${r.ba_lot||'—'}</td><td>${r.sti_lot||'—'}</td><td>${r.inj_lot||'—'}</td><td>${r.resin_lots||'—'}</td><td class="num">${r.depth}/4</td><td>${r.first_gap}</td></tr>`).join('')+'</table>'}
 
+async function inspBreakdown(query,request){const box=$('#pInspBreakBody');box.innerHTML='<div class="muted">불러오는 중…</div>';let b;
+  try{b=await api('/api/inspection-breakdown?'+query)}catch(e){box.innerHTML='<div class="muted">구분별 집계를 불러오지 못했습니다: '+escapeHtml(e.message||e)+'</div>';return}
+  if(request!==processRequest)return;
+  const models=[...new Set(b.classes.map(c=>c.model))],row=(m,c)=>b.classes.find(x=>x.model===m&&x.class===c);
+  const cell=r=>r?`<td class="num">${fmt(r.runs)}</td><td class="num">${fmt(r.qty)}</td><td class="num">${fmt(r.defects)}</td><td class="num">${r.defect_rate==null?'—':r.defect_rate.toFixed(2)+'%'}</td><td class="num">${r.unresolved_lots?'<b style="color:#b45309">'+r.unresolved_lots+'</b>':'0'}</td>`:'<td colspan="5" class="muted">—</td>';
+  let h='<table><thead><tr><th>모델</th><th>구분</th><th>건수</th><th>검사량(EA)</th><th>불량</th><th>불량률</th><th>LOT 미연결</th></tr></thead><tbody>';
+  for(const m of models){const main=['1차','2차'].map(c=>row(m,c)).filter(Boolean),sq=main.reduce((a,r)=>a+r.qty,0),sd=main.reduce((a,r)=>a+r.defects,0);
+    for(const c of ['1차','2차'])if(row(m,c))h+=`<tr><td>${m}</td><td>본검사 ${c}</td>${cell(row(m,c))}</tr>`;
+    h+=`<tr style="background:#f3f6f9;font-weight:600"><td>${m}</td><td>최종검사 합계(본검사)</td><td class="num">${fmt(main.reduce((a,r)=>a+r.runs,0))}</td><td class="num">${fmt(sq)}</td><td class="num">${fmt(sd)}</td><td class="num">${sq?(sd/sq*100).toFixed(2)+'%':'—'}</td><td></td></tr>`;
+    const re=row(m,'재검');h+=`<tr style="background:#fff8e6"><td>${m}</td><td>재검 (중복 · 합계 제외)</td>${cell(re)}</tr>`}
+  h+='</tbody></table>';
+  const L=b.reinspection_lots||[];
+  h+=`<h4 style="margin:14px 0 6px">재검 LOT 별 (${L.length}줄)</h4>`;
+  if(!L.length)h+='<div class="muted">선택한 조건의 재검 기록이 없습니다.</div>';
+  else h+='<table><thead><tr><th>재검일</th><th>모델</th><th>검사 LOT(원문)</th><th>CA LOT</th><th>연결</th><th>LOT 수량(EA)</th><th>LOT 불량</th><th>재검 전체 불량<br><small>(LOT 미배분)</small></th><th>불량명</th><th>방법</th></tr></thead><tbody>'+L.map(r=>`<tr${r.missing_lot?' style="background:#fff3cd"':''}><td>${r.reinspection_date}</td><td>${r.model_code}</td><td>${escapeHtml(r.lot_code_raw||'')}${r.missing_lot?' <b style="color:#b45309">확인 필요</b>':''}</td><td>${escapeHtml(r.ca_lot_code||'—')}</td><td>${r.lot_linkage_status==='UNRESOLVED'?'<span style="color:#b45309">미연결</span>':r.lot_linkage_status==='CONFIRMED'?'확정':'후보'}</td><td class="num">${r.lot_qty==null?'—':fmt(r.lot_qty)}</td><td class="num">${fmt(r.lot_defect_qty)}</td><td class="num">${r.lots_in_run>1?fmt(r.run_defect_qty)+' <small class="muted">/'+r.lots_in_run+'LOT</small>':(r.run_defect_qty?fmt(r.run_defect_qty):'')}</td><td>${escapeHtml(r.defect_names||'')}</td><td>${r.inspection_method==='MICROSCOPE'?'현미경':'육안'}</td></tr>`).join('')+'</tbody></table>';
+  box.innerHTML=h}
 let processRequest=0;
 const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function defectQuantity(row){return row.null_findings==null?(row.qty===0?'확인 불가':fmt(row.qty)):(row.findings===row.null_findings?'미확정':fmt(row.qty))}
@@ -111,8 +128,9 @@ async function processView(code){const request=++processRequest,filters={model:s
   if(code==='IMEB3_FINAL_INSPECTION')$('#pTiles').after($('#pDefectCard'));else $('#pDailyDefectCard').after($('#pDefectCard'));
   const models=['IV','OV','HSV'].filter(m=>series.some(r=>r.model===m));const dates=[...new Set(series.map(r=>r.date))];
   const tot=series.reduce((a,r)=>a+(r.qty||0),0),dq=series.reduce((a,r)=>a+(r.defects||0),0),mins=series.reduce((a,r)=>a+(r.minutes||0),0);
-  $('#pTiles').innerHTML=`<div class="tile"><div class="k">${LABEL[code]} ${code==='IMEB3_FINAL_INSPECTION'?'검사량':'생산량'} 합계</div><div class="v">${fmt(tot)}</div><div class="s">${dates.length}일 기록</div></div><div class="tile"><div class="k">불량 합계</div><div class="v">${fmt(dq)}</div><div class="s">${tot?(dq/tot*100).toFixed(2)+'%':'—'}</div></div>`+(mins?`<div class="tile"><div class="k">작업시간</div><div class="v">${fmt(Math.round(mins/60))}h</div><div class="s">시간당 ${fmt(Math.round(tot/(mins/60)))}</div></div>`:'')+`<div class="tile"><div class="k">모델</div><div class="v" style="font-size:16px">${models.join(' · ')||'—'}</div></div>`;
+  $('#pTiles').innerHTML=`<div class="tile"><div class="k">${LABEL[code]} ${code==='IMEB3_FINAL_INSPECTION'?'검사량(본검사)':'생산량'} 합계</div><div class="v">${fmt(tot)}</div><div class="s">${dates.length}일 기록${code==='IMEB3_FINAL_INSPECTION'?' · 재검 '+fmt(series.reduce((a,r)=>a+(r.reinspection_qty||0),0))+'EA 별도':''}</div></div><div class="tile"><div class="k">불량 합계</div><div class="v">${fmt(dq)}</div><div class="s">${tot?(dq/tot*100).toFixed(2)+'%':'—'}</div></div>`+(mins?`<div class="tile"><div class="k">작업시간</div><div class="v">${fmt(Math.round(mins/60))}h</div><div class="s">시간당 ${fmt(Math.round(tot/(mins/60)))}</div></div>`:'')+`<div class="tile"><div class="k">모델</div><div class="v" style="font-size:16px">${models.join(' · ')||'—'}</div></div>`;
   $('#pTitle1').textContent=code==='IMEB3_FINAL_INSPECTION'?'일자별 검사량':'일자별 생산량';
+  $('#pInspBreak').hidden=code!=='IMEB3_FINAL_INSPECTION';if(code==='IMEB3_FINAL_INSPECTION')inspBreakdown(query,request);
   const ds=k=>models.map(m=>({label:m,data:dates.map(d=>{const r=series.find(x=>x.date===d&&x.model===m);return r?r[k]:null}),backgroundColor:COL[m],borderColor:m==='IV'?'#9ca3af':COL[m],borderWidth:1,borderRadius:4,maxBarThickness:18,borderSkipped:false}));
   chart('c1',{type:'bar',data:{labels:dates,datasets:ds('qty')},options:baseOpts});
   chart('c2',{type:'bar',data:{labels:dates,datasets:ds('defects')},options:baseOpts});

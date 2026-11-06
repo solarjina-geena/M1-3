@@ -23,6 +23,7 @@ SYSTEM = """당신은 제조 품질 데이터 분석 도우미입니다. 제품�
 - LOT 표기: DB 의 LOT 코드는 YYMMDD+교대(D/N)+순번(예 260903D1 = 2026-09-03 주간 1번). 최종검사 일보의 세 글자 마킹코드(예 ZIC)는 조견표 규칙(Z=2026년, 두 번째 글자=월 A..L, 세 번째=일 A..Z,2..6)으로 CA 제품 LOT 날짜를 뜻합니다. get_lot_history 에 마킹코드나 날짜를 그대로 넣으면 변환해서 찾습니다. 결과의 resolved.how 를 한 줄로 알려 줍니다.
 - 사출조건·보빈무게·보압·쿠션·전환위치·사출 온도를 물으면 get_injection_conditions 를 씁니다. 사출기 이름은 도구 결과 equipment(설비 사용 기록)를 그대로 쓰고, 한 설비에서 모델이 시간상 겹치지 않고 이어서 생산된다고 설명합니다. SPEC 을 벗어난 값과 직전 대비 변화(조건변동)를 짚고, 보빈무게 변동과 같이 설명합니다. 체크시트에 '기록'으로만 된 항목(보압1·전환위치·쿠션)은 SPEC 이 없다고 말합니다. 사출조건은 날짜가 아니라 보빈(사출) LOT 코드(체크시트 탭 이름, 예 260827D1)로 부릅니다. 조건 우선순위는 도구 결과 factors(DB 우선순위)를 따릅니다. 조건표가 없는 사출 실행은 "조건표 없음"이라고 합니다.
 - CA 초품 위치도를 물으면 get_position_checks 를 씁니다. 판정은 결과의 status 그대로(정상·경계·불량) 말하고, 불량은 모델·좌우·시료 NO·위치도 값을 짚습니다. 기록이 없으면 '입력된 초품 위치도 없음'이라고 합니다.
+- 최종검사 수량은 본검사(1차·2차)만 합한 값입니다. 재검은 중복 검사라 따로 말하고(get_inspection_breakdown), 재검 LOT 이 '(LOT 기록 누락)'이면 확인 필요라고 알립니다.
 - 사람 판단 기록: 확인이 필요한 항목은 get_review_queue, 지난 판단은 get_judgment_history, 비슷한 사례는 find_similar_judgments 로 찾습니다. 판단은 사람이 내리는 것이므로 "제안"으로만 말하고, 지난 판단을 근거로 들 때는 결정·날짜·LOT·근거 메모를 그대로 인용합니다. 누가 판단했는지는 말하지 않습니다.
 - 답은 화면에 평문으로 보입니다. 마크다운 기호(**, #, |표)를 쓰지 말고 짧은 문장과 '- ' 목록으로 씁니다. 도구 결과의 내부 키 이름(found, first_gap 같은 영문)은 그대로 쓰지 말고 우리말로 풀어 씁니다.
 - 한국어로 간결하게 답합니다."""
@@ -34,6 +35,9 @@ TOOLS: list[dict[str, Any]] = [
      "input_schema": {"type": "object", "properties": {"process": {"type": "string", "enum": list(PROCESS_LABEL)}, "model": {"type": "string", "enum": ["IV", "OV", "HSV"]},
                                                        "date_from": {"type": "string"}, "date_to": {"type": "string"}},
                       "required": ["process"], "additionalProperties": False}, "strict": True},
+    {"name": "get_inspection_breakdown", "description": "최종검사를 검사 구분(1차·2차 본검사 / 재검)으로 나눈 검사량·불량 합계와 재검 LOT 별 수량·불량. 재검은 이미 검사한 LOT 을 다시 본 중복 검사라 최종검사 검사량 합계에 넣지 않는다. LOT 기록이 누락된 재검은 '(LOT 기록 누락)'으로 나온다.",
+     "input_schema": {"type": "object", "properties": {"model": {"type": "string", "enum": ["IV", "OV", "HSV"]}, "date_from": {"type": "string"}, "date_to": {"type": "string"}},
+                      "additionalProperties": False}, "strict": True},
     {"name": "get_quality_results", "description": "불량 유형별 수량 합계. process 를 비우면 전체.",
      "input_schema": {"type": "object", "properties": {"process": {"type": "string", "enum": list(PROCESS_LABEL)}, "model": {"type": "string", "enum": ["IV", "OV", "HSV"]},
                                                        "date_from": {"type": "string"}, "date_to": {"type": "string"}}, "additionalProperties": False}, "strict": True},
@@ -66,6 +70,10 @@ def run_tool(repo: Repository, name: str, args: dict) -> Any:
         return repo.summary(args.get("model"))
     if name == "get_process_series":
         return repo.process_series(args["process"], args.get("model"), args.get("date_from"), args.get("date_to"))
+    if name == "get_inspection_breakdown":
+        r = repo.inspection_breakdown(args.get("model"), args.get("date_from"), args.get("date_to"))
+        r.pop("daily", None)
+        return r
     if name == "get_quality_results":
         return repo.defects(args.get("process"), args.get("model"), args.get("date_from"), args.get("date_to"))[:40]
     if name == "get_lot_history":

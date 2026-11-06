@@ -33,10 +33,11 @@
         <label>순번 ${inp('sequence', p.sequence, '1', '60px', 'number')}</label>
         <label>${fin ? '검사량' : '생산량'} ${inp('gross_output_qty', p.gross_output_qty, '', '110px', 'number')}</label>
         <label>작업시간(분) ${inp('work_minutes', p.work_minutes, '', '90px', 'number')}</label>
-        ${fin ? `<label>차수 ${sel('inspection_round', p.inspection_round, [['', '—'], ['1', '1차'], ['2', '2차']])}</label><label>검사자(가려서 저장) ${inp('inspector_raw', p.inspector_raw, '', '110px')}</label>` : ''}
+        ${fin ? `<label>검사 구분 ${sel('inspection_type', p.inspection_type || 'FINAL', [['FINAL', '본검사'], ['REINSPECTION', '재검(중복 검사)']])}</label><label>차수 ${sel('inspection_round', p.inspection_round, [['', '—'], ['1', '1차'], ['2', '2차']])}</label><label>검사자(가려서 저장) ${inp('inspector_raw', p.inspector_raw, '', '110px')}</label>` : ''}
       </div>
       <label class="je-wide">수량 원문 ${inp('raw_quantity_text', p.raw_quantity_text, '', '100%')}</label>
       <label class="je-wide">비고 원문 ${inp('remarks_raw', p.remarks_raw, '', '100%')}</label>
+      ${fin && !p.lots.length ? `<div class="warn" style="margin:6px 0">일보에 LOT 기록이 없습니다 — 그대로 저장하면 <b>(LOT 기록 누락)</b> 줄로 남고 '확인 필요'에 올라갑니다. 나중에 CA LOT 을 넣으면 연결됩니다.${p.inspection_type === 'REINSPECTION' ? ' 재검은 최종검사 검사량 합계에 넣지 않고 따로 집계됩니다.' : ''}</div>` : ''}
       ${fin ? list('lots', '검사 LOT (마킹=BOX)', p.lots, (r, b) => `${inp(b + '.raw', r.raw, 'ZH4=2BOX', '130px')} 마킹 ${inp(b + '.marking_code', r.marking_code, 'ZH4', '70px')} BOX ${inp(b + '.boxes', r.boxes, '', '60px', 'number')}`, '검사 LOT')
         : list('inputs', '투입 LOT (상위 공정) ★사슬', p.inputs, (r, b) => `<select data-p="${b}.process">${procOpts(r.process)}</select> ${sel(b + '.component', r.component, [['', '—'], ['BOBBIN', '보빈'], ['INSERT', '인서트']])} 날짜 ${inp(b + '.lot_date', r.lot_date, '2026-09-03', '120px')} 원문 ${inp(b + '.raw', r.raw, '9.3', '110px')}`, '투입 LOT')
         + list('materials', '원자재 LOT ★사슬', p.materials, (r, b) => `<select data-p="${b}.material">${matOpts(r.material)}</select> 날짜 ${inp(b + '.lot_date', r.lot_date, '2026-08-28', '120px')} 원문 ${inp(b + '.raw', r.raw, '8.28', '120px')} 수량 ${inp(b + '.qty', r.qty, '', '70px', 'number')} ${inp(b + '.unit', r.unit, 'kg', '45px')} 위치 ${inp(b + '.spindle', r.spindle, '1-1', '55px')}`, '원자재')
@@ -72,6 +73,7 @@
     const t = ev.target, box = t.closest && t.closest('.je'); if (!box || !t.dataset.p) return;
     const k = +box.dataset.k, it = getItem(k); if (!it) return;
     setPath(it.payload, t.dataset.p, t.value);
+    if (t.dataset.p === 'inspection_type') { if (t.value === 'REINSPECTION' && !it.payload.inspection_round) it.payload.inspection_round = 2; redraw(k); }
     t.style.background = flag(t.value) ? '#fff3cd' : '#eaf7ea'; t.style.borderColor = flag(t.value) ? '#e7ad00' : '#5cb85c';
     const st = document.querySelector(`tr[data-i="${k}"] .st-cell`); if (st && !st.dataset.edited) { st.dataset.edited = '1'; st.insertAdjacentHTML('beforeend', '<br><small class="warn">수정됨(저장 전)</small>') }
   });

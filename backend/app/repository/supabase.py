@@ -40,6 +40,34 @@ class SupabaseRepository(Repository):
             info["db"] = f"error: {e}"
         return info
 
+    def inspection_breakdown(self, model: str | None, date_from: str | None, date_to: str | None) -> dict:
+        """최종검사 검사 구분별(1차·2차·재검) 집계와 재검 LOT 별 행. 재검은 중복 검사라 본검사 합계와 따로."""
+        params: dict[str, Any] = {"order": "inspection_date"}
+        if model:
+            params["model_code"] = f"eq.{model}"
+        _date_filter(params, "inspection_date", date_from, date_to)
+        rows = self.c.select("m13_inspection_breakdown", params, limit=100000)
+        rp: dict[str, Any] = {"order": "reinspection_date"}
+        if model:
+            rp["model_code"] = f"eq.{model}"
+        _date_filter(rp, "reinspection_date", date_from, date_to)
+        lots = self.c.select("m13_reinspection_lot_rows", rp, limit=100000)
+        by: dict[tuple, dict] = {}
+        for r in rows:
+            b = by.setdefault((r["model_code"], r["inspection_class"]), {"model": r["model_code"], "class": r["inspection_class"],
+                                                                          "runs": 0, "qty": 0, "defects": 0, "lots": 0, "unresolved_lots": 0, "days": set()})
+            b["runs"] += r["runs"] or 0; b["qty"] += r["inspected_qty"] or 0; b["defects"] += r["defect_qty"] or 0
+            b["lots"] += r["lots"] or 0; b["unresolved_lots"] += r["unresolved_lots"] or 0; b["days"].add(r["inspection_date"])
+        order = {"1차": 1, "2차": 2, "재검": 3, "기타": 4}
+        classes = []
+        for b in sorted(by.values(), key=lambda b: (b["model"], order.get(b["class"], 9))):
+            b["days"] = len(b["days"])
+            b["defect_rate"] = round(b["defects"] / b["qty"] * 100, 3) if b["qty"] else None
+            b["counted_in_final_total"] = b["class"] != "재검"
+            classes.append(b)
+        return {"classes": classes, "reinspection_lots": lots, "daily": rows,
+                "rule": "최종검사 검사량 = 1차+2차(본검사). 재검은 이미 검사한 LOT 을 다시 본 중복 검사라 따로 합산. LOT 기록 누락 재검은 '(LOT 기록 누락)' 줄로 남고 확인 필요 탭에서 CA LOT 을 넣으면 연결."}
+
     def summary(self, model: str | None = None) -> dict:
         params = {}
         if model:
@@ -56,8 +84,14 @@ class SupabaseRepository(Repository):
             b["minutes"] += r["work_minutes"] or 0
             b["days"].add(r["work_date"])
             b["models"].add(r["model_code"])
-        fin = {"runs": sum(r["runs"] for r in insp), "qty": sum(r["inspected_qty"] or 0 for r in insp),
-               "defects": sum(r["defect_qty"] or 0 for r in insp), "days": len({r["inspection_date"] for r in insp})}
+        # 재검(REINSPECTION)은 이미 검사한 LOT 을 다시 본 중복 검사 → 최종검사 검사량·불량 합계에 넣지 않고 따로 집계
+        main = [r for r in insp if r["inspection_type"] != "REINSPECTION"]
+        re_ = [r for r in insp if r["inspection_type"] == "REINSPECTION"]
+        fin = {"runs": sum(r["runs"] for r in main), "qty": sum(r["inspected_qty"] or 0 for r in main),
+               "defects": sum(r["defect_qty"] or 0 for r in main), "days": len({r["inspection_date"] for r in main}),
+               "reinspection": {"runs": sum(r["runs"] for r in re_), "qty": sum(r["inspected_qty"] or 0 for r in re_),
+                                "defects": sum(r["defect_qty"] or 0 for r in re_), "days": len({r["inspection_date"] for r in re_}),
+                                "note": "재검 = 중복 검사(이미 검사한 LOT) — 위 검사량·불량에 포함하지 않음"}}
         processes = []
         for code in PROCESS_CODES:
             if code == "IMEB3_FINAL_INSPECTION":
@@ -85,14 +119,20 @@ class SupabaseRepository(Repository):
             agg: dict[tuple, dict] = {}
             for r in rows:
                 k = (r["inspection_date"], r["model_code"])
-                a = agg.setdefault(k, {"date": k[0], "model": k[1], "runs": 0, "qty": 0, "defects": 0, "reinspections": 0})
+                a = agg.setdefault(k, {"date": k[0], "model": k[1], "runs": 0, "qty": 0, "defects": 0,
+                                       "reinspections": 0, "reinspection_qty": 0, "reinspection_defects": 0})
+                if r["inspection_type"] == "REINSPECTION":   # 중복 검사 → 본검사 합계와 따로
+                    a["reinspections"] += r["runs"]
+                    a["reinspection_qty"] += r["inspected_qty"] or 0
+                    a["reinspection_defects"] += r["defect_qty"] or 0
+                    continue
                 a["runs"] += r["runs"]
                 a["qty"] += r["inspected_qty"] or 0
                 a["defects"] += r["defect_qty"] or 0
-                a["reinspections"] += r["runs"] if r["inspection_type"] == "REINSPECTION" else 0
             out = sorted(agg.values(), key=lambda a: (a["date"], a["model"]))
             for a in out:
                 a["defect_rate"] = round(a["defects"] / a["qty"] * 100, 3) if a["qty"] else None
+                a["reinspection_defect_rate"] = round(a["reinspection_defects"] / a["reinspection_qty"] * 100, 3) if a["reinspection_qty"] else None
             return out
         params["process_code"] = f"eq.{process}"
         _date_filter(params, "work_date", date_from, date_to)

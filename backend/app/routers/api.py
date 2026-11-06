@@ -615,6 +615,12 @@ def reinspection_targets(model: str = Query(..., pattern="^(IV|OV|HSV)$")):
     return _wrap(_repo().reinspection_targets, model)
 
 
+@router.get("/inspection-breakdown")
+def inspection_breakdown(model: Optional[str] = None, date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
+    """최종검사 검사 구분별(1차·2차·재검) 집계 + 재검 LOT 별 수량·불량. 재검은 본검사 합계에 넣지 않는다."""
+    return _wrap(_repo().inspection_breakdown, model if model in ("IV", "OV", "HSV") else None, date_from or None, date_to or None)
+
+
 @router.get("/reinspections")
 def reinspections(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"), limit: int = Query(300, ge=1, le=2000)):
     return _wrap(_repo().reinspections, model, limit)
