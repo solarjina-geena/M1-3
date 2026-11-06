@@ -46,6 +46,18 @@
     }, { limit: 120 }).catch(() => { });
   }
 
+  function previewText() {
+    const text = $('#bp_text').value;
+    if (!text.trim()) { setStatus('bobbin', '엑셀에서 블록을 복사해 붙여넣으세요', 'warn'); return }
+    job('bobbin', '붙여넣기 읽기', async signal => {
+      prev = await api('/api/bobbin-position/preview-text', { method: 'POST', authed: true, signal, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, model: $('#bp_model').value || null, date: $('#bp_date').value || null, shift: $('#bp_shift').value || null }) });
+      render();
+      if (!prev.blocks.length) return '읽을 수 있는 블록이 없습니다 — 제목 줄부터 복사하거나, NO·좌X·좌Y·위치도·판정·우X·우Y… 줄을 복사하세요';
+      return `미리보기 · 블록 ${prev.blocks.length}개 — 확인 후 'DB에 저장'`;
+    }, { limit: 60 }).catch(() => { });
+  }
+
   function save() {
     if (!prev) { setStatus('bobbin', '먼저 미리보기를 하세요', 'warn'); return }
     const keys = [...document.querySelectorAll('.bp_blk:checked')].map(c => c.value);
@@ -80,7 +92,7 @@
 
   function init() {
     if (!$('#v-bobbin')) return;
-    $('#bp_go').onclick = preview; $('#bp_save').onclick = save; $('#bp_listGo').onclick = loadList; $('#bp_listModel').onchange = loadList;
+    $('#bp_go').onclick = preview; $('#bp_goText').onclick = previewText; $('#bp_save').onclick = save; $('#bp_listGo').onclick = loadList; $('#bp_listModel').onchange = loadList;
     $('#bp_file').onchange = () => { prev = null; render(); $('#bp_res').innerHTML = ''; const f = $('#bp_file').files[0]; if (f) setStatus('bobbin', `파일 선택됨 · ${f.name} · '미리보기'를 누르세요`, 'info') };
     document.querySelector('#tabs [data-v="bobbin"]')?.addEventListener('click', loadList);
   }

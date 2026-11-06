@@ -559,6 +559,31 @@ async def bobbin_position_preview(file: UploadFile = File(...), authorization: O
     return res
 
 
+class BobbinTextIn(BaseModel):
+    text: str
+    model: Optional[str] = None
+    date: Optional[str] = None
+    shift: Optional[str] = None
+
+
+@router.post("/bobbin-position/preview-text")
+def bobbin_position_preview_text(body: BobbinTextIn, authorization: Optional[str] = Header(None)):
+    """엑셀에서 복사해 붙여넣은 보빈 위치도 블록(제목 줄 포함이면 제목에서, 숫자 줄만이면 고른 모델·날짜·주야로)."""
+    _admin(authorization)
+    if len(body.text) > 400_000:
+        raise HTTPException(400, "붙여넣은 내용이 너무 깁니다")
+    model = body.model if body.model in ("IV", "OV", "HSV") else None
+    date = body.date if body.date and re.fullmatch(r"\d{4}-\d{2}-\d{2}", body.date) else None
+    res = bobbin_position.read_text(body.text, model, date, body.shift if body.shift in ("D", "N") else None)
+    have = {(e["model_code"], e["check_date"], e.get("shift")) for e in _repo().bobbin_position_entries()}
+    for b in res["blocks"]:
+        b["exists"] = (b["model"], b["date"], b["shift"]) in have
+    if len(_BB_CACHE) > 6:
+        _BB_CACHE.pop(next(iter(_BB_CACHE)))
+    _BB_CACHE[res["sha256"]] = res
+    return res
+
+
 class BobbinSaveIn(BaseModel):
     sha256: str
     keys: list[str]
