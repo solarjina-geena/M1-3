@@ -60,6 +60,15 @@
     }, { limit: 60 }).catch(() => { });
   }
 
+  // 방금 저장한 블록으로 대시보드를 연다: 모델이 하나면 그 모델, 날짜가 하나면 하루 보기, 여러 날이면 기간 보기
+  function bbLink(r) {
+    const ok = r.results.filter(x => x.ok).map(x => prev.blocks.find(b => b.key === x.key)).filter(Boolean);
+    const ms = [...new Set(ok.map(b => b.model))], ds = [...new Set(ok.map(b => b.date))].sort();
+    let u = 'index.html?proc=INJECTION&view=bobbin' + (ms.length === 1 ? '&model=' + ms[0] : '');
+    if (ds.length === 1) u += '&date=' + ds[0]; else if (ds.length > 1) u += `&mode=range&from=${ds[0]}&to=${ds.at(-1)}`;
+    return u;
+  }
+
   function save() {
     if (!prev) { setStatus('bobbin', '먼저 미리보기를 하세요', 'warn'); return }
     const keys = [...document.querySelectorAll('.bp_blk:checked')].map(c => c.value);
@@ -70,7 +79,7 @@
       const r = await api('/api/bobbin-position', { method: 'POST', authed: true, signal, headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sha256: prev.sha256, keys, replace: $('#bp_replace').checked, notes }) });
       $('#bp_res').innerHTML = `<ul>${r.results.map(x => x.ok ? `<li class="ok">${e(x.key)} → BB LOT ${e(x.bb_lot)} · 측정값 ${x.measurements}개 · ${x.process_run_id ? '사출 실행 연결' : `<span class="warn">미연결(그 LOT 사출 실행 ${x.runs}건)</span>`}</li>` : `<li class="err">${e(x.key)} 실패 · ${e(x.error)}</li>`).join('')}</ul>
-        <a class="ghost small" href="index.html?proc=INJECTION&view=bobbin" target="m13dash">대시보드 보빈 위치도 보기 ↗</a>`;
+        <a class="primary small" href="${bbLink(r)}" target="m13dash" style="display:inline-block;margin-top:4px;padding:6px 12px;border-radius:8px;text-decoration:none">방금 저장한 보빈 위치도 보기 ↗</a>`;
       prev.blocks.forEach(b => { if (r.results.some(x => x.ok && x.key === b.key)) b.exists = true }); render(); loadList();
       const bad = r.results.filter(x => !x.ok).length;
       return `저장 ${r.saved}블록${bad ? ` · 실패 ${bad}블록(목록에 사유)` : ''}`;
