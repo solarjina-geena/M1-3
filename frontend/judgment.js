@@ -21,13 +21,13 @@
   };
 
   // ---- 로그인 세션 (manage.html 과 같은 저장소)
-  const authGet = () => { try { return JSON.parse(sessionStorage.getItem('m13auth') || 'null') } catch (e) { return null } };
-  const authSet = j => sessionStorage.setItem('m13auth', JSON.stringify({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at, email: j.user?.email || authGet()?.email }));
+  const authGet = () => { try { return JSON.parse(m13AuthStore.getItem('m13auth') || 'null') } catch (e) { return null } };
+  const authSet = j => m13AuthStore.setItem('m13auth', JSON.stringify({ access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at, email: j.user?.email || authGet()?.email }));
   const tok = () => authGet()?.access_token || sessionStorage.getItem('m13token') || '';
   async function refresh() {
     const a = authGet(); if (!a?.refresh_token) return false;
     const r = await fetch(API + '/api/auth/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: a.refresh_token }) });
-    if (!r.ok) { sessionStorage.removeItem('m13auth'); return false }
+    if (!r.ok) { m13AuthStore.removeItem('m13auth'); return false }
     authSet(await r.json()); return true;
   }
   async function post(path, body, retry = true) {

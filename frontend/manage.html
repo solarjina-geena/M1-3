@@ -17,7 +17,8 @@ button.primary{background:var(--ink);color:var(--bg);border:none;border-radius:8
 pre{background:var(--bg);border:1px solid var(--grid);border-radius:8px;padding:8px;font-size:12px;overflow:auto;max-height:260px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:5px 6px;border-bottom:1px solid var(--grid);text-align:left;vertical-align:top}th{color:var(--muted);font-weight:500}
 .ok{color:var(--good)}.err{color:var(--bad)}.muted{color:var(--muted)}.st{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;border:1px solid var(--border)}.cand{color:#9a6b00}.conf{color:var(--good)}
 .ocr-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}.ocr-controls input{flex:1;min-width:220px}.ocr-status{margin-top:10px;padding:9px 11px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font-size:13px}.ocr-status.info{color:var(--ink2)}.ocr-status.busy{color:var(--iv)}.ocr-status.warn{color:#9a6b00}.ocr-status.error{color:var(--bad)}.ocr-status.good{color:var(--good)}button:disabled{opacity:.55;cursor:not-allowed}
-</style></head>
+</style><script src="auth-store.js"></script>
+</head>
 <body>
 <header><h1>작업일보 입력·관리</h1><span class="muted" id="env"></span><span style="margin-left:auto"></span>
   <span id="authBox" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span id="who" class="muted"></span>
@@ -53,7 +54,7 @@ pre{background:var(--bg);border:1px solid var(--grid);border-radius:8px;padding:
   <div class="row"><div><label>모델</label><select id="p_model"><option>IV</option><option>OV</option><option>HSV</option></select></div><div><label>측정일(초품)</label><input type="date" id="p_date"></div>
   <div><label>원본 파일(선택)</label><input id="p_file" placeholder="IV 공정검사(위치도) 26.08.21.xlsx"></div><div><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="p_replace" style="width:auto"> 기존 기록 바꾸기</label></div></div>
   <label>측정값 (A1-3 하루치 블록 그대로, 또는 NO 좌X 좌Y 우X 우Y)</label><textarea id="p_rows" rows="8" placeholder="1	2.138	12.086	2.128	12.07&#10;2	2.069	12.004	2.096	11.903"></textarea>
-  <div style="display:flex;gap:8px;margin-top:10px"><button class="ghost" id="p_preview">미리보기(판정)</button><button class="primary" id="p_save">DB에 저장</button><a id="p_dash" href="index.html" style="margin-left:auto;align-self:center">대시보드 CA 화면에서 보기 →</a></div>
+  <div style="display:flex;gap:8px;margin-top:10px"><button class="ghost" id="p_preview">미리보기(판정)</button><button class="primary" id="p_save">DB에 저장</button><a id="p_dash" href="index.html?proc=CA&view=position" target="m13dash" style="margin-left:auto;align-self:center">대시보드 CA 화면에서 보기 →</a></div>
   <div class="ocr-controls" style="margin-top:10px"><span id="st-position" class="ocr-status info" style="margin:0;flex:1">대기 중 · 붙여넣은 뒤 미리보기를 누르세요</span></div><div id="p_out" style="margin-top:10px"></div></div></section>
 <section class="view" id="v-reinsp"><div class="card"><h3>최종검사 재검사 (일보 비고란)</h3><div class="sub">재검사 = <b>이미 최종검사한 LOT 에서 불량을 추가로 가려내는 작업</b>입니다. 비고란을 캡처해 <b>AI로 읽기</b>를 하거나, 비고에 LOT·모델이 없으면 직접 고르세요.
  저장하면 팀 표에 FK 로 연결됩니다: <code>inspection_run</code>(재검) → <code>inspection_lot</code>(대상 CA 제품 LOT) · <code>inspection_run_link</code>(본검사 → 재검) · <code>quality_finding</code>(가려낸 불량, 불량 유형). 잘못·중복 입력은 아래 목록에서 <b>삭제(VOID)</b> — 행은 지우지 않고 CRUD 이력에 <b>[최종검사]</b> 로 남습니다.</div>
@@ -83,14 +84,14 @@ pre{background:var(--bg);border:1px solid var(--grid);border-radius:8px;padding:
 const $=s=>document.querySelector(s);
 const EMBED=new URLSearchParams(location.search).get('embed')==='1';
 // ---- 로그인 세션: sessionStorage 'm13auth' (tables.html 과 공유). 만료 2분 전이면 refresh_token 으로 자동 갱신, 401 이면 한 번 갱신 후 재시도.
-const authGet=()=>{try{return JSON.parse(sessionStorage.getItem('m13auth')||'null')}catch(e){return null}};
-const authSet=j=>sessionStorage.setItem('m13auth',JSON.stringify({access_token:j.access_token,refresh_token:j.refresh_token,expires_at:j.expires_at,email:j.user?.email||authGet()?.email}));
+const authGet=()=>{try{return JSON.parse(m13AuthStore.getItem('m13auth')||'null')}catch(e){return null}};
+const authSet=j=>m13AuthStore.setItem('m13auth',JSON.stringify({access_token:j.access_token,refresh_token:j.refresh_token,expires_at:j.expires_at,email:j.user?.email||authGet()?.email}));
 const tok=()=>authGet()?.access_token||sessionStorage.getItem('m13token')||'';
 const H=()=>({'Content-Type':'application/json',...(tok()?{Authorization:'Bearer '+tok()}:{})});
 let refreshing=null;
 async function refreshNow(){const a=authGet();if(!a?.refresh_token)return false;if(refreshing)return refreshing;refreshing=(async()=>{try{const r=await fetch('/api/auth/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:a.refresh_token})});if(!r.ok)return false;authSet(await r.json());return true}catch(e){return false}finally{refreshing=null}})();return refreshing}
 async function ensureAuth(){const a=authGet();if(a?.expires_at&&a.expires_at*1000-Date.now()<120000)await refreshNow()}
-function sessionLost(){sessionStorage.removeItem('m13auth');$('#who').textContent='로그인이 풀렸습니다 — 다시 로그인하세요';$('#who').className='err';if(EMBED){try{parent.postMessage({type:'m13auth-expired'},'*')}catch(e){}}else{$('#logout').style.display='none';['#email','#pw','#login'].forEach(s=>$(s).style.display='')}}
+function sessionLost(){m13AuthStore.removeItem('m13auth');$('#who').textContent='로그인이 풀렸습니다 — 다시 로그인하세요';$('#who').className='err';if(EMBED){try{parent.postMessage({type:'m13auth-expired'},'*')}catch(e){}}else{$('#logout').style.display='none';['#email','#pw','#login'].forEach(s=>$(s).style.display='')}}
 async function api(p,opt={}){if(opt.authed){await ensureAuth();opt.headers={...(opt.headers||{}),...(tok()?{Authorization:'Bearer '+tok()}:{})}}
   const r=await fetch(p,opt);if(r.status===401&&opt.authed&&!opt._retried){if(await refreshNow())return api(p,{...opt,_retried:true});sessionLost()}
   const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail?(typeof j.detail==='string'?j.detail:JSON.stringify(j.detail)):r.statusText);return j}
@@ -103,7 +104,7 @@ async function session(){try{await ensureAuth();const s=await api('/api/admin/se
   $('#env').textContent=(s.read_only?'읽기 전용 환경(저장 불가)':'저장 가능 · actor '+s.actor)}catch(e){$('#who').className='err';$('#who').textContent=tok()?'로그인이 풀렸습니다 — 다시 로그인하세요':'로그인 필요';if(!EMBED)$('#logout').style.display='none';$('#env').textContent=e.message}}
 $('#token').value=sessionStorage.getItem('m13token')||'';$('#tokenGo').onclick=()=>{sessionStorage.setItem('m13token',$('#token').value.trim());session()};
 $('#login').onclick=async()=>{$('#env').textContent='로그인 중…';try{const j=await api('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('#email').value.trim(),password:$('#pw').value})});authSet(j);$('#pw').value='';session()}catch(e){$('#env').textContent='로그인 실패: '+e.message}};
-$('#logout').onclick=async()=>{const a=authGet();if(a)await fetch('/api/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+a.access_token}}).catch(()=>{});sessionStorage.removeItem('m13auth');session()};
+$('#logout').onclick=async()=>{const a=authGet();if(a)await fetch('/api/auth/logout',{method:'POST',headers:{Authorization:'Bearer '+a.access_token}}).catch(()=>{});m13AuthStore.removeItem('m13auth');session()};
 $('#pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('#login').click()});
 api('/api/health').then(h=>{$('#env').textContent=`${h.env} · ${h.project_ref||''} · DB ${h.db} · AI ${h.anthropic_key}`;session()});
 window.setInterval(()=>{if(authGet())ensureAuth()},60000);   // 화면을 켜 둔 동안 세션 유지
@@ -183,6 +184,8 @@ function posApplyHeader(p){const notes=[];if(p.dates.length>1)throw new Error('�
  if(p.dates.length===1&&$('#p_date').value!==p.dates[0]){if($('#p_date').value)notes.push('측정일을 원천 제목의 '+p.dates[0]+' 로 바꿈');$('#p_date').value=p.dates[0]}
  if(p.model&&$('#p_model').value!==p.model){notes.push('모델을 원천 제목의 '+p.model+' 로 바꿈');$('#p_model').value=p.model}return notes}
 function posJudge(sp,x,y){const dx=x-sp.nom_x,dy=y-sp.nom_y,v=Math.max(2*Math.abs(dx),2*Math.abs(dy),2*Math.hypot(dx,dy)),xy=2*Math.hypot(dx,dy);return{xy,st:v<=sp.spec?'정상':v<=(sp.control??sp.spec)?'경계':'불량'}}
+function posDashLink(){const m=$('#p_model').value,d=$('#p_date').value;$('#p_dash').href='index.html?proc=CA&view=position&model='+encodeURIComponent(m)+(d?'&date='+d:'')}
+$('#p_dash').addEventListener('click',posDashLink);
 $('#p_preview').onclick=()=>job('position','미리보기',async()=>{const p=parsePosRows();if(!p.rows.length)throw new Error('읽을 수 있는 측정 줄이 없습니다 (A1-3 블록 그대로 또는 NO 좌X 좌Y 우X 우Y)');const notes=posApplyHeader(p);const sp=(await loadPosSpec())[$('#p_model').value];if(!sp)throw new Error('이 모델의 위치도 기준이 DB 에 없습니다');
   const C={정상:'ok',경계:'warn',불량:'err'};let n={정상:0,경계:0,불량:0},diff=0;const src=p.layout==='A1-3 원천';
   const cell=(x,y,s)=>{if(!x)return `<td class="muted">—</td>${src?'<td></td>':''}`;const j=posJudge(sp,+x,+y);n[j.st]++;const want=j.st==='정상'?'OK':'NG',miss=s&&s!==want;if(miss)diff++;return `<td class="${C[j.st]}">${j.xy.toFixed(3)} ${j.st}</td>${src?`<td class="${miss?'err':'muted'}">${s||'—'}${miss?' ≠':''}</td>`:''}`};
