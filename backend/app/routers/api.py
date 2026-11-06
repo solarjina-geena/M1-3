@@ -22,6 +22,7 @@ from ..auth import supabase_auth as sauth
 from ..config import settings
 from ..db.supabase_client import SupabaseError
 from ..ingest import excel_csv
+from ..ingest import injection_sheet
 from ..ingest.image import extract_from_image
 from ..ingest.journal_payload import JournalPayload
 from ..repository.base import PROCESS_LABEL
@@ -209,7 +210,7 @@ def journal_preview(payload: JournalPayload):
 
 STAGE_LABEL = {"IMEB3_INJECTION": "사출", "IMEB3_STITCHING": "스티칭", "IMEB3_WINDING": "권선(BA)", "IMEB3_CA_PRESS": "압입(CA)",
                "IMEB3_FINAL_INSPECTION": "최종검사"}
-VIA_LABEL = {"reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기"}
+VIA_LABEL = {"reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기", "injection": "사출조건 체크시트"}
 
 
 def _actor(who: dict) -> str:
@@ -429,6 +430,105 @@ def position_entries(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$")
 class PositionVoidIn(BaseModel):
     check_id: str
     note: str
+
+
+# ---------------------------------------------------------------- 사출조건 체크시트 (IV·OV·HSV 같은 양식)
+# 미리보기에서 읽은 결과를 해시로 잠깐 들고 있다가 저장 때 쓴다(무거운 엑셀을 두 번 올리지 않게). 서버 1대(Render) 기준.
+_INJ_CACHE: dict[str, dict] = {}
+INJ_MAX_BYTES = 30 * 1024 * 1024
+
+
+@router.post("/injection-sheet/preview")
+async def injection_sheet_preview(file: UploadFile = File(...), model: str = Query(..., pattern="^(IV|OV|HSV)$"),
+                                  authorization: Optional[str] = Header(None)):
+    """체크시트 엑셀을 읽어 탭(= 보빈 LOT)별 실측 수·양식 검사·기준 차이를 돌려준다. 이미지는 읽지 않는다."""
+    _admin(authorization)
+    name = _fix_name(file.filename or "upload.xlsx")
+    if not name.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(400, "xlsx 파일만 받습니다(.xls 는 엑셀에서 xlsx 로 저장해 주세요)")
+    data = await file.read()
+    if len(data) > INJ_MAX_BYTES:
+        raise HTTPException(400, f"파일이 너무 큽니다({len(data) // 1048576}MB). 30MB 이하로 — 사진 탭을 지운 사본을 쓰세요")
+    try:
+        res = await asyncio.to_thread(injection_sheet.read_workbook, data, name, model)
+    except Exception as e:  # 엑셀이 아닌 파일 등
+        raise HTTPException(400, f"엑셀을 읽지 못했습니다: {e}")
+    existing = {(s["model_code"], s["tab"]) for s in _repo().injection_sheets(model)}
+    for t in res["tabs"]:
+        t["exists"] = (model, t["tab"]) in existing
+    if len(_INJ_CACHE) > 6:
+        _INJ_CACHE.pop(next(iter(_INJ_CACHE)))
+    _INJ_CACHE[res["sha256"] + ":" + model] = res
+    out = {k: v for k, v in res.items() if k != "params"}
+    out["tabs"] = [{k: v for k, v in t.items() if k != "obs"} | {"sample": _inj_sample(t["obs"])} for t in res["tabs"]]
+    return out
+
+
+def _fix_name(name: str) -> str:
+    """한글 파일명이 multipart 에서 latin-1 로 풀려 깨진 경우(UTF-8 바이트) 되돌린다."""
+    try:
+        raw = name.encode("latin-1")
+    except UnicodeEncodeError:
+        return name                      # 이미 제대로 풀린 이름
+    for enc in ("utf-8", "cp949"):       # 브라우저는 UTF-8, Windows 도구는 cp949 로 보낸다
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            pass
+    return name
+
+
+def _inj_sample(obs: list[dict]) -> list[dict]:
+    """미리보기 표용 대표 항목(우선 인자): 사출1 압력·보압·전환위치·쿠션·노즐 온도·보빈무게."""
+    want = ["INJ_PRESS_S1", "INJ_PRESS_HOLD1", "MON_SWITCH_POS_START", "INJ_CUSHION", "INJ_TEMP_NZ", "BOBBIN_WEIGHT"]
+    return [o for c in want for o in obs if o["code"] == c]
+
+
+class InjSheetIn(BaseModel):
+    sha256: str
+    model: str
+    tabs: list[str]
+    replace: bool = False
+
+
+@router.post("/injection-sheet")
+def injection_sheet_save(body: InjSheetIn, authorization: Optional[str] = Header(None)):
+    """미리보기한 체크시트에서 고른 탭을 저장(실측·출처·사출 실행 FK). 같은 모델·탭이 있으면 replace=true 일 때만 이전 것을 VOID."""
+    who = _admin(authorization)
+    res = _INJ_CACHE.get(body.sha256 + ":" + body.model)
+    if not res:
+        raise HTTPException(409, "미리보기 결과가 없습니다(서버가 다시 시작됨). 파일을 다시 미리보기 해 주세요")
+    tabs = [t for t in res["tabs"] if t["tab"] in set(body.tabs) and not t["problem"]]
+    if not tabs:
+        raise HTTPException(400, "저장할 탭이 없습니다(양식 문제가 있는 탭은 저장하지 않습니다)")
+    payload = {"model": body.model, "replace": body.replace,
+               "file": {"name": res["file"], "sha256": res["sha256"], "size": res["size"]},
+               "params": {k: list(v) for k, v in res["params"].items()},
+               "tabs": [{k: t[k] for k in ("tab", "lot", "date", "shift", "title", "spec_doc", "spec_rev", "specs", "obs", "night_obs")} for t in tabs],
+               "actor": _actor(who),
+               "reason": _reason("IMEB3_INJECTION", "injection", f"사출조건 체크시트 {body.model} {len(tabs)}장 ({', '.join(t['lot'] for t in tabs)[:120]})"
+                                 + (" (기존 기록 바꾸기)" if body.replace else ""))}
+    return _wrap(_repo().injection_sheet_save, payload)
+
+
+@router.get("/injection-sheets")
+def injection_sheets(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$")):
+    return _wrap(_repo().injection_sheets, model)
+
+
+class InjVoidIn(BaseModel):
+    document_id: str
+    note: str
+
+
+@router.post("/injection-sheet/void")
+def injection_sheet_void(body: InjVoidIn, authorization: Optional[str] = Header(None)):
+    who = _admin(authorization)
+    note = body.note.strip()
+    if not 5 <= len(note) <= 300 or _PII.search(note):
+        raise HTTPException(400, "삭제 사유는 5~300자, 이메일·전화번호 형태 금지")
+    return _wrap(_repo().injection_sheet_void, {"document_id": body.document_id, "note": note, "actor": _actor(who),
+                                                "reason": _reason("IMEB3_INJECTION", "injection", f"사출조건 탭 삭제(VOID) · {note}")})
 
 
 @router.post("/position/void")

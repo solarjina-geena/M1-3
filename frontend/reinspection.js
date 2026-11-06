@@ -185,8 +185,9 @@
   // ---- 입력된 재검 목록 · 삭제(VOID)
   async function loadList() {
     const m = $('#r_listModel').value; let rows = [];
-    try { rows = await api('/api/reinspections' + (m ? '?model=' + m : '')) } catch (e) { $('#r_list').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; return }
-    $('#r_list').innerHTML = rows.length ? `<table><tr><th>재검일</th><th>모델</th><th>대상 LOT</th><th>본검사</th><th>방법</th><th>재검 수량</th><th>불량</th><th>비고 원문</th><th>입력</th><th></th></tr>${rows.map(r => `<tr>
+    try { rows = await api('/api/reinspections?limit=2000' + (m ? '&model=' + m : '')) } catch (e) { $('#r_list').innerHTML = '<div class="err">' + esc(e.message) + '</div>'; return }
+    m13List.show('reinsp', $('#r_list'), rows, { dateKey: 'inspection_date', timeKey: 'recorded_at', dateLabel: '재검일', empty: '입력된 재검사가 없습니다.',
+      head: `<th>재검일</th><th>모델</th><th>대상 LOT</th><th>본검사</th><th>방법</th><th>재검 수량</th><th>불량</th><th>비고 원문</th><th>입력</th><th></th>`, row: r => `<tr>
       <td>${esc(r.inspection_date)}</td><td>${esc(r.model_code)}</td>
       <td style="text-align:left">${(r.lots || []).map(l => `${esc(l.lot_code_raw || '')}${l.ca_lot_code ? ' → ' + esc(l.ca_lot_code) : ' (미연결)'}`).join('<br>') || '—'}</td>
       <td>${(r.prior_runs || []).map(p => `${esc(p.prior_date)} ${p.prior_qty_ea ?? ''}EA`).join('<br>') || '<span class="warn">연결 없음</span>'}</td>
@@ -194,8 +195,9 @@
       <td>${(r.findings || []).map(f => esc(f.defect) + ' ' + (f.qty ?? '?')).join('<br>') || '<span class="warn">없음</span>'}</td>
       <td style="text-align:left"><small>${esc(r.raw_note || '')}</small></td>
       <td><small class="muted">${r.dataset ? '판독 적재' : r.source?.ai_read ? '캡처+AI' : '화면 입력'}</small></td>
-      <td><button class="ghost small" type="button" data-void="${esc(r.run_id)}">삭제</button></td></tr>`).join('')}</table>` : '<div class="muted">입력된 재검사가 없습니다.</div>';
-    $('#r_list').querySelectorAll('[data-void]').forEach(b => b.onclick = () => {
+      <td><button class="ghost small" type="button" data-void="${esc(r.run_id)}">삭제</button></td></tr>`, after: box => bindVoid(box) });
+    function bindVoid(box) {
+    box.querySelectorAll('[data-void]').forEach(b => b.onclick = () => {
       const note = prompt('삭제(VOID) 사유를 5자 이상 적어 주세요 (예: 같은 재검 중복 입력, LOT 잘못 고름)\n행은 지우지 않고 무효 처리되어 CRUD 이력에 남습니다.');
       if (note === null) return;
       job('reinsp', '재검 삭제', async () => {
@@ -203,6 +205,7 @@
         loadList(); return `삭제(VOID) 완료 · 함께 무효 처리된 행 ${r.voided_rows}개(재검·대상 LOT·본검사 연결·불량)`;
       }).catch(() => {});
     });
+    }
   }
 
   // ---- 시작

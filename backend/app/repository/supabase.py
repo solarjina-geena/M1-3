@@ -538,6 +538,24 @@ class SupabaseRepository(Repository):
         payload.setdefault("actor", settings.actor)
         return self.c.rpc("m13_position_void", {"p": payload})
 
+    # ---------------------------------------------------------------- 사출조건 체크시트 (관리 화면 업로드)
+    def injection_sheets(self, model: str | None = None) -> list[dict]:
+        """뷰 m13_injection_sheets: 저장된 체크시트 탭(= 보빈 LOT) 1장 = 1행, 실측 수·실행 FK 연결 수."""
+        params: dict[str, Any] = {"order": "model_code.asc,tab.asc"}
+        if model:
+            params["model_code"] = f"eq.{model}"
+        return self.c.select("m13_injection_sheets", params, limit=2000)
+
+    def injection_sheet_save(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_injection_sheet_save", {"p": payload})
+
+    def injection_sheet_void(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_injection_sheet_void", {"p": payload})
+
     def position_save(self, payload: dict[str, Any]) -> dict:
         self._guard()
         payload.setdefault("actor", settings.actor)
