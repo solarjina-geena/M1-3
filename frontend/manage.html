@@ -49,11 +49,11 @@ pre{background:var(--bg);border:1px solid var(--grid);border-radius:8px;padding:
   <select id="g_model" style="width:120px"><option value="">전체</option><option>IV</option><option>OV</option><option>HSV</option></select><button class="ghost" id="gapsGo">불러오기</button><div class="ocr-controls" style="margin-top:10px"><span id="st-gaps" class="ocr-status info" style="margin:0;flex:1">대기 중</span><button class="ghost small" id="cancel-gaps" data-cancel="gaps" disabled>취소</button></div><div id="gapsOut" style="margin-top:10px"></div></div></section>
 <section class="view" id="v-confirm"><div class="card"><h3>연결 확인 (CANDIDATE → CONFIRMED)</h3><div class="sub">LOT 코드를 넣으면 그 LOT 의 투입 자재와 최종검사 연결이 나옵니다. 원본을 보고 맞으면 확인을 누르세요. 공정 간 INPUT 연결은 LOT 추적 화면의 edge id 로 확인합니다.</div>
   <div style="display:flex;gap:8px"><input id="c_lot" placeholder="260903D1" style="width:200px"><select id="c_model" style="width:100px"><option>IV</option><option>OV</option><option>HSV</option></select><button class="ghost" id="confGo">불러오기</button></div><div class="ocr-controls" style="margin-top:10px"><span id="st-confirm" class="ocr-status info" style="margin:0;flex:1">대기 중 · LOT 코드를 넣고 불러오기를 누르세요</span><button class="ghost small" id="cancel-confirm" data-cancel="confirm" disabled>취소</button></div><div id="confOut" style="margin-top:10px"></div></div></section>
-<section class="view" id="v-position"><div class="card"><h3>CA 초품 핀 위치도 입력</h3><div class="sub">A1-3 초품 위치도 엑셀에서 <b>하루치 블록(제목 줄부터 NO 6까지)을 그대로 복사</b>해 붙여넣으세요. 제목의 모델·날짜는 자동으로 채우고, 측정 안 한 빈 양식 줄은 건너뜁니다. 5칸(NO 좌X 좌Y 우X 우Y)만 붙여도 됩니다. 판정 기준(기준 X·Y, SPEC ⌀, 관리기준 ⌀)은 DB 에 등록된 값으로 미리보기에서 바로 계산합니다.
+<section class="view" id="v-position"><div class="card"><h3>CA 초품 핀 위치도 입력</h3><div class="sub">A1-3 초품 위치도 엑셀에서 <b>블록(제목 줄부터 NO 6까지)을 그대로 복사</b>해 붙여넣으세요. <b>여러 날 블록을 한 번에</b> 붙여도 제목 줄마다 하루로 나눠 저장합니다. 제목의 모델·날짜는 자동으로 채우고, 측정 안 한 빈 양식 줄은 건너뜁니다. 5칸(NO 좌X 좌Y 우X 우Y)만 붙여도 됩니다. 판정 기준(기준 X·Y, SPEC ⌀, 관리기준 ⌀)은 DB 에 등록된 값으로 미리보기에서 바로 계산합니다.
  저장하면 팀 표 <code>quality_check</code>(초품) + <code>measurement</code> 에 들어가고, 그날·그 모델 CA 실행이 1건이면 자동 연결됩니다. 같은 모델·날짜를 다시 저장하려면 "기존 기록 바꾸기"를 켜세요(이전 기록은 지우지 않고 VOID). 모든 저장은 CRUD 이력에 <b>[압입(CA)]</b> 로 남습니다.</div>
   <div class="row"><div><label>모델</label><select id="p_model"><option>IV</option><option>OV</option><option>HSV</option></select></div><div><label>측정일(초품)</label><input type="date" id="p_date"></div>
   <div><label>원본 파일(선택)</label><input id="p_file" placeholder="IV 공정검사(위치도) 26.08.21.xlsx"></div><div><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;font-weight:400"><input type="checkbox" id="p_replace" style="width:auto"> 기존 기록 바꾸기</label></div></div>
-  <label>측정값 (A1-3 하루치 블록 그대로, 또는 NO 좌X 좌Y 우X 우Y)</label><textarea id="p_rows" rows="8" placeholder="1	2.138	12.086	2.128	12.07&#10;2	2.069	12.004	2.096	11.903"></textarea>
+  <label>측정값 (A1-3 블록 그대로 — 여러 날 가능, 또는 NO 좌X 좌Y 우X 우Y)</label><textarea id="p_rows" rows="8" placeholder="1	2.138	12.086	2.128	12.07&#10;2	2.069	12.004	2.096	11.903"></textarea>
   <div style="display:flex;gap:8px;margin-top:10px"><button class="ghost" id="p_preview">미리보기(판정)</button><button class="primary" id="p_save">DB에 저장</button><a id="p_dash" href="index.html?proc=CA&view=position" target="m13dash" style="margin-left:auto;align-self:center">대시보드 CA 화면에서 보기 →</a></div>
   <div class="ocr-controls" style="margin-top:10px"><span id="st-position" class="ocr-status info" style="margin:0;flex:1">대기 중 · 붙여넣은 뒤 미리보기를 누르세요</span></div><div id="p_out" style="margin-top:10px"></div></div></section>
 <section class="view" id="v-reinsp"><div class="card"><h3>최종검사 재검사 (일보 비고란)</h3><div class="sub">재검사 = <b>이미 최종검사한 LOT 에서 불량을 추가로 가려내는 작업</b>입니다. 비고란을 캡처해 <b>AI로 읽기</b>를 하거나, 비고에 LOT·모델이 없으면 직접 고르세요.
@@ -171,34 +171,54 @@ $('#confGo').onclick=()=>job('confirm','LOT 조회',async signal=>{const t=await
   <h4>최종검사 연결</h4>${t.inspections.length?`<table><tr><th>LOT</th><th>검사일</th><th>검사 LOT 표기</th><th>상태</th></tr>${t.inspections.map(i=>`<tr><td>${i.lot_code}</td><td>${i.inspection_date}</td><td>${i.inspection_lot_raw}</td><td>${b('inspection_lot',i.inspection_lot_id,i.lot_linkage_status)}</td></tr>`).join('')}</table>`:'<div class="muted">없음</div>'}`;return `연결 ${t.edges.length} · 자재 ${t.materials.length} · 검사 ${t.inspections.length}`},{buttons:['#confGo']}).catch(()=>{});
 // ---- CA 초품 위치도 입력 (기준·판정은 DB /api/position-spec)
 let posSpec=null;async function loadPosSpec(){if(!posSpec)posSpec=await api('/api/position-spec');return posSpec}
-// 붙여넣기 형식 두 가지: (1) A1-3 원천 엑셀 블록 그대로 — 제목(모델·날짜)·품명·X Y·NO 줄 포함, 한 줄 = NO 좌X 좌Y 좌위치도 좌판정 우X 우Y 우위치도 우판정 (비고)
-// (2) 5칸 — NO 좌X 좌Y 우X 우Y. 측정 안 한 빈 양식 줄(X·Y 빈칸)은 건너뛴다. 탭으로 붙여넣으면 빈칸 위치를 그대로 지킨다.
-function parsePosRows(){const out=[],bad=[],dates=new Set();let model=null,layout='5칸',skipped=0;const num=v=>v!==''&&v!=null&&Number.isFinite(Number(v));
+// 붙여넣기 형식: (1) A1-3 원천 엑셀 블록 그대로 — 제목 줄(모델·날짜)·품명·X Y·NO 줄 포함, 한 줄 = NO 좌X 좌Y 좌위치도 좌판정 우X 우Y 우위치도 우판정 (비고)
+//   여러 날 블록을 한꺼번에 붙여도 제목 줄마다 하루로 나눈다(측정 없는 빈 양식 블록은 건너뜀). (2) 5칸 — NO 좌X 좌Y 우X 우Y → 위 모델·측정일 칸 기준 하루.
+//   탭으로 붙여넣으면 빈칸 위치를 그대로 지킨다.
+function parsePosBlocks(){const blocks=[];let cur=null;const num=v=>v!==''&&v!=null&&Number.isFinite(Number(v));
+ const start=(date,model,title)=>{cur={date,model,title,rows:[],bad:[],skipped:0,layout:'5칸'};blocks.push(cur)};
  for(const [i,line] of $('#p_rows').value.split(/\r?\n/).entries()){if(!line.trim())continue;const c=(line.includes('\t')?line.split('\t'):line.trim().split(/[,; ]+/)).map(v=>v.trim());
-  if(!/^\d+$/.test(c[0]||'')){const j=c.join(' ');const dm=j.match(/(?:^|\s)(\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})(?:\s|$)/);if(dm)dates.add(`20${dm[1]}-${dm[2].padStart(2,'0')}-${dm[3].padStart(2,'0')}`);const mm=j.toUpperCase().match(/(?:^|\s)(IV|OV|0V|HSV)(?:\s|$)/);if(mm)model=mm[1]==='0V'?'OV':mm[1];continue}
-  let r;if(c.length>=9&&/^(OK|NG)?$/i.test(c[4]||'')&&/^(OK|NG)?$/i.test(c[8]||'')){layout='A1-3 원천';r={no:+c[0],lx:c[1],ly:c[2],rx:c[5],ry:c[6],src_l:(c[4]||'').toUpperCase()||null,src_r:(c[8]||'').toUpperCase()||null,note:c.slice(9).filter(Boolean).join(' ')||null}}
-  else if(c.filter(v=>v!=='').length>=5){const d=c.filter(v=>v!=='');r={no:+d[0],lx:d[1],ly:d[2],rx:d[3],ry:d[4]}}else{bad.push(i+1);continue}
-  const v=[r.lx,r.ly,r.rx,r.ry];if(v.every(x=>!x)){skipped++;continue}if(v.some(x=>x&&!num(x))||(!r.lx)!==(!r.ly)||(!r.rx)!==(!r.ry)){bad.push(i+1);continue}out.push(r)}
- return{rows:out,bad,dates:[...dates],model,layout,skipped}}
-function posApplyHeader(p){const notes=[];if(p.dates.length>1)throw new Error('하루치 블록씩 붙여넣으세요 (찾은 날짜: '+p.dates.join(', ')+')');
- if(p.dates.length===1&&$('#p_date').value!==p.dates[0]){if($('#p_date').value)notes.push('측정일을 원천 제목의 '+p.dates[0]+' 로 바꿈');$('#p_date').value=p.dates[0]}
- if(p.model&&$('#p_model').value!==p.model){notes.push('모델을 원천 제목의 '+p.model+' 로 바꿈');$('#p_model').value=p.model}return notes}
+  if(!/^\d+$/.test(c[0]||'')){const j=c.join(' ');const dm=j.match(/(?:^|\s)(\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})(?:\s|$)/);const mm=j.toUpperCase().match(/(?:^|\s)(IV|OV|0V|HSV)(?:\s|$)/);
+   if(/coil|ass'?y|공정검사/i.test(j)||(dm&&mm))start(dm?`20${dm[1]}-${dm[2].padStart(2,'0')}-${dm[3].padStart(2,'0')}`:null,mm?(mm[1]==='0V'?'OV':mm[1]):null,true);
+   continue}
+  if(!cur)start(null,null,false);
+  let r;if(c.length>=9&&/^(OK|NG)?$/i.test(c[4]||'')&&/^(OK|NG)?$/i.test(c[8]||'')){cur.layout='A1-3 원천';r={no:+c[0],lx:c[1],ly:c[2],rx:c[5],ry:c[6],src_l:(c[4]||'').toUpperCase()||null,src_r:(c[8]||'').toUpperCase()||null,note:c.slice(9).filter(Boolean).join(' ')||null}}
+  else if(c.filter(v=>v!=='').length>=5){const d=c.filter(v=>v!=='');r={no:+d[0],lx:d[1],ly:d[2],rx:d[3],ry:d[4]}}else{cur.bad.push(i+1);continue}
+  const v=[r.lx,r.ly,r.rx,r.ry];if(v.every(x=>!x)){cur.skipped++;continue}if(v.some(x=>x&&!num(x))||(!r.lx)!==(!r.ly)||(!r.rx)!==(!r.ry)){cur.bad.push(i+1);continue}cur.rows.push(r)}
+ const empty=blocks.filter(b=>!b.rows.length&&!b.bad.length).length,used=blocks.filter(b=>b.rows.length||b.bad.length);
+ // 블록이 하나면 제목에 없는 모델·날짜를 위 칸에서, 여러 개면 제목 날짜가 없는 블록은 저장하지 않는다(다른 날로 섞이지 않게)
+ for(const b of used){b.model=b.model||$('#p_model').value;if(!b.date&&used.length===1)b.date=$('#p_date').value||null;b.problem=!b.date?'측정일 없음(제목 줄에 날짜가 없음)':null}
+ const seen=new Map();for(const b of used){const k=b.model+'|'+b.date;if(b.date&&seen.has(k))b.problem='같은 모델·날짜 블록이 두 번 있음';seen.set(k,1)}
+ return{blocks:used,empty}}
 function posJudge(sp,x,y){const dx=x-sp.nom_x,dy=y-sp.nom_y,v=Math.max(2*Math.abs(dx),2*Math.abs(dy),2*Math.hypot(dx,dy)),xy=2*Math.hypot(dx,dy);return{xy,st:v<=sp.spec?'정상':v<=(sp.control??sp.spec)?'경계':'불량'}}
 function posDashLink(){const m=$('#p_model').value,d=$('#p_date').value;$('#p_dash').href='index.html?proc=CA&view=position&model='+encodeURIComponent(m)+(d?'&date='+d:'')}
 $('#p_dash').addEventListener('click',posDashLink);
-$('#p_preview').onclick=()=>job('position','미리보기',async()=>{const p=parsePosRows();if(!p.rows.length)throw new Error('읽을 수 있는 측정 줄이 없습니다 (A1-3 블록 그대로 또는 NO 좌X 좌Y 우X 우Y)');const notes=posApplyHeader(p);const sp=(await loadPosSpec())[$('#p_model').value];if(!sp)throw new Error('이 모델의 위치도 기준이 DB 에 없습니다');
-  const C={정상:'ok',경계:'warn',불량:'err'};let n={정상:0,경계:0,불량:0},diff=0;const src=p.layout==='A1-3 원천';
+function posBlockHtml(b,sp){const C={정상:'ok',경계:'warn',불량:'err'};const n={정상:0,경계:0,불량:0};let diff=0;const src=b.layout==='A1-3 원천';
   const cell=(x,y,s)=>{if(!x)return `<td class="muted">—</td>${src?'<td></td>':''}`;const j=posJudge(sp,+x,+y);n[j.st]++;const want=j.st==='정상'?'OK':'NG',miss=s&&s!==want;if(miss)diff++;return `<td class="${C[j.st]}">${j.xy.toFixed(3)} ${j.st}</td>${src?`<td class="${miss?'err':'muted'}">${s||'—'}${miss?' ≠':''}</td>`:''}`};
   const th=src?'<th>원천</th>':'';
-  $('#p_out').innerHTML=`<div class="muted">형식: ${p.layout} · 기준(DB, ${sp.status}): X ${sp.nom_x} · Y ${sp.nom_y} · SPEC ⌀${sp.spec} · 관리기준 ⌀${sp.control}${p.skipped?' · 빈 양식 줄 '+p.skipped+'개 건너뜀':''}${notes.length?' · <b>'+notes.join(' · ')+'</b>':''}${p.bad.length?' · <span class="err">못 읽은 줄 '+p.bad.join(', ')+'</span>':''}${src?'<br>원천 판정은 SPEC ⌀'+sp.spec+' 한 단계(OK/NG), 대시보드는 정상·경계·불량 3단계 — 경계·불량 = NG 와 같은 뜻. ≠ 는 서로 다른 칸':''}</div>
-   <table><tr><th>NO</th><th>좌 X</th><th>좌 Y</th><th>좌 위치도</th>${th}<th>우 X</th><th>우 Y</th><th>우 위치도</th>${th}${src?'<th>비고</th>':''}</tr>${p.rows.map(r=>`<tr><td>${r.no}</td><td>${r.lx||''}</td><td>${r.ly||''}</td>${cell(r.lx,r.ly,r.src_l)}<td>${r.rx||''}</td><td>${r.ry||''}</td>${cell(r.rx,r.ry,r.src_r)}${src?`<td class="muted">${esc(r.note||'')}</td>`:''}</tr>`).join('')}</table>`;
-  return `미리보기 · ${$('#p_model').value} ${$('#p_date').value||'(측정일 없음)'} · 시료 ${p.rows.length}개 · 정상 ${n.정상} · 경계 ${n.경계} · 불량 ${n.불량}${src?' · 원천 판정과 다른 칸 '+diff+'개':''}`});
-$('#p_save').onclick=()=>{let p;try{p=parsePosRows();posApplyHeader(p)}catch(e){setStatus('position',e.message,'warn');return}if(!p.rows.length){setStatus('position','저장할 측정 줄이 없습니다','warn');return}if(!$('#p_date').value){setStatus('position','측정일을 넣으세요','warn');return}if(p.bad.length&&!confirm('못 읽은 줄('+p.bad.join(', ')+')은 빼고 저장할까요?'))return;
-  const rows=p.rows.map(r=>({no:r.no,lx:r.lx||null,ly:r.ly||null,rx:r.rx||null,ry:r.ry||null}));
-  const source={file:$('#p_file').value.trim()||null,entered_via:'manage.html 위치도 붙여넣기',layout:p.layout,skipped_blank_rows:p.skipped};
-  if(p.layout==='A1-3 원천')source.sheet_judgement=p.rows.map(r=>({no:r.no,l:r.src_l,r:r.src_r,note:r.note}));
-  job('position','DB 저장',async signal=>{const r=await api('/api/position',{method:'POST',authed:true,headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({model:$('#p_model').value,check_date:$('#p_date').value,rows,replace:$('#p_replace').checked,source})});
-    return `저장됨 · ${$('#p_model').value} ${$('#p_date').value} · 측정값 ${r.measurements}개 · CA 실행 ${r.process_run_id?'연결됨':'미연결(그날 CA 실행 '+r.ca_runs_that_day+'건)'}${r.replaced?' · 이전 기록 VOID':''} · 경계·불량이 있으면 대시보드 '확인 필요' 탭에 판단 카드로 올라갑니다`})};
+  const body=b.rows.map(r=>`<tr><td>${r.no}</td><td>${r.lx||''}</td><td>${r.ly||''}</td>${cell(r.lx,r.ly,r.src_l)}<td>${r.rx||''}</td><td>${r.ry||''}</td>${cell(r.rx,r.ry,r.src_r)}${src?`<td class="muted">${esc(r.note||'')}</td>`:''}</tr>`).join('');
+  const head=`<h4 style="margin:14px 0 4px">${esc(b.model)} ${esc(b.date||'(측정일 없음)')} <small class="muted">· 시료 ${b.rows.length}개 · 정상 ${n.정상} · 경계 ${n.경계} · 불량 ${n.불량}${src?' · 원천 판정과 다른 칸 '+diff+'개':''}${b.skipped?' · 빈 양식 줄 '+b.skipped+'개 건너뜀':''}</small>${b.problem?` <span class="err">저장 안 함: ${esc(b.problem)}</span>`:''}${b.bad.length?` <span class="err">못 읽은 줄 ${b.bad.join(', ')}</span>`:''}</h4>`;
+  return{html:head+`<table><tr><th>NO</th><th>좌 X</th><th>좌 Y</th><th>좌 위치도</th>${th}<th>우 X</th><th>우 Y</th><th>우 위치도</th>${th}${src?'<th>비고</th>':''}</tr>${body}</table>`,n,diff}}
+$('#p_preview').onclick=()=>job('position','미리보기',async()=>{const {blocks,empty}=parsePosBlocks();if(!blocks.length)throw new Error('읽을 수 있는 측정 줄이 없습니다 (A1-3 블록 그대로 또는 NO 좌X 좌Y 우X 우Y)');const spec=await loadPosSpec();
+  let html='',tot={정상:0,경계:0,불량:0},diff=0;const src=blocks.some(b=>b.layout==='A1-3 원천');
+  for(const b of blocks){const sp=spec[b.model];if(!sp){b.problem='이 모델의 위치도 기준이 DB 에 없음';html+=`<h4 class="err">${esc(b.model)} ${esc(b.date||'')} — 기준 없음</h4>`;continue}const o=posBlockHtml(b,sp);html+=o.html;for(const k in tot)tot[k]+=o.n[k];diff+=o.diff}
+  const sp0=spec[blocks[0].model]||{};const ok=blocks.filter(b=>!b.problem);if(ok.length){$('#p_model').value=ok[0].model;if(ok[0].date)$('#p_date').value=ok[0].date}
+  $('#p_out').innerHTML=`<div class="muted">기준(DB): X ${sp0.nom_x} · Y ${sp0.nom_y} · SPEC ⌀${sp0.spec} · 관리기준 ⌀${sp0.control}${empty?' · 측정 없는 빈 양식 블록 '+empty+'개 건너뜀':''}${src?'<br>원천 판정은 SPEC ⌀'+sp0.spec+' 한 단계(OK/NG), 대시보드는 정상·경계·불량 3단계 — 경계·불량 = NG 와 같은 뜻. ≠ 는 서로 다른 칸':''}</div>`+html;
+  return `미리보기 · ${blocks.length}일치(저장 가능 ${ok.length}일) · ${ok.map(b=>b.model+' '+b.date.slice(5)).join(', ')} · 정상 ${tot.정상} · 경계 ${tot.경계} · 불량 ${tot.불량}${src?' · 원천 판정과 다른 칸 '+diff+'개':''}`});
+$('#p_save').onclick=()=>{let pb;try{pb=parsePosBlocks()}catch(e){setStatus('position',e.message,'warn');return}const ok=pb.blocks.filter(b=>!b.problem&&b.rows.length);
+  if(!ok.length){setStatus('position','저장할 측정 블록이 없습니다(측정일·측정값 확인)','warn');return}
+  const bad=pb.blocks.flatMap(b=>b.bad.map(x=>(b.date||'?')+' 줄 '+x));if(bad.length&&!confirm('못 읽은 줄('+bad.join(', ')+')은 빼고 저장할까요?'))return;
+  if(ok.length>1&&!confirm(ok.length+'일치를 하루씩 차례로 저장할까요?\n'+ok.map(b=>b.model+' '+b.date+' 시료 '+b.rows.length).join('\n')))return;
+  job('position','DB 저장',async(signal,progress)=>{const res=[];
+    for(const [k,b] of ok.entries()){if(signal.aborted)break;progress(`저장 중 ${k+1} / ${ok.length} · ${b.model} ${b.date}`);
+      const rows=b.rows.map(r=>({no:r.no,lx:r.lx||null,ly:r.ly||null,rx:r.rx||null,ry:r.ry||null}));
+      const source={file:$('#p_file').value.trim()||null,entered_via:'manage.html 위치도 붙여넣기',layout:b.layout,skipped_blank_rows:b.skipped};
+      if(b.layout==='A1-3 원천')source.sheet_judgement=b.rows.map(r=>({no:r.no,l:r.src_l,r:r.src_r,note:r.note}));
+      try{const r=await api('/api/position',{method:'POST',authed:true,headers:{'Content-Type':'application/json'},signal,body:JSON.stringify({model:b.model,check_date:b.date,rows,replace:$('#p_replace').checked,source})});
+        res.push(`<li class="ok">${esc(b.model)} ${esc(b.date)} 저장 · 측정값 ${r.measurements}개 · CA 실행 ${r.process_run_id?'연결':'미연결(그날 CA 실행 '+r.ca_runs_that_day+'건)'}${r.replaced?' · 이전 기록 VOID':''}</li>`)}
+      catch(e){if(e.name==='AbortError')break;res.push(`<li class="err">${esc(b.model)} ${esc(b.date)} 실패 · ${esc(e.message)}</li>`)}}
+    const saved=res.filter(x=>x.includes('class="ok"')).length;$('#p_out').insertAdjacentHTML('afterbegin',`<ul style="margin:0 0 10px">${res.join('')}</ul>`);
+    const last=ok[Math.min(ok.length,res.length)-1];if(last){$('#p_model').value=last.model;$('#p_date').value=last.date}
+    return `저장 ${saved}일 · 실패 ${res.length-saved}일${res.length<ok.length?' · 중단 '+(ok.length-res.length)+'일':''} · 경계·불량이 있으면 대시보드 '확인 필요' 탭에 판단 카드로 올라갑니다`},{limit:0})};
 // ---- CRUD 이력
 const CRUD_STAGES=[['','전체'],['IMEB3_INJECTION','사출'],['IMEB3_STITCHING','스티칭'],['IMEB3_WINDING','권선(BA)'],['IMEB3_CA_PRESS','압입(CA)'],['IMEB3_FINAL_INSPECTION','최종검사'],['SOURCE','원본·출처'],['COMMON','공통']];let crudStage='';
 $('#crudStages').innerHTML=CRUD_STAGES.map(([k,l])=>`<button class="ghost small${k===''?' on':''}" data-stage="${k}">${l}</button>`).join('');
