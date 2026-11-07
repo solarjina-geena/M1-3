@@ -23,7 +23,9 @@ NOT_IMEB3 = {"탈피불량", "납조불량"}
 # 표시 순서(팀장 2026-11-07): 비슷한 불량끼리 붙여 보이게 묶음 순서 → 묶음 안에서는 수량 많은 순. Marking 은 리워크 가능이라 맨 끝.
 GROUPS = [
     ("와이어·핀·용접", ["Wire Damage", "Lead Pin 찍힘", "Lead Pin 휨", "용접버", "Wire 이탈", "Wire 늘어짐", "여선불량", "용접불량", "Lead Pin 도금"]),
-    ("보빈·Post·압입", ["Bobbin 파손", "Post 파손", "미압입", "Bobbin 미성형", "Post 미성형", "Bobbin 이물", "보빈 안흔들림", "내경파손"]),
+    ("보빈·Post·압입", ["Bobbin 파손", "Post 파손", "미압입", "내경파손"]),
+    # 사출 보빈 불량이 걸러지지 않고 최종검사까지 흘러온 것(팀장 2026-11-07)
+    ("보빈 불량 유출(사출)", ["Bobbin 미성형", "Post 미성형", "미성형", "Bobbin 이물", "P/O 이물", "보빈 안흔들림", "Bobbin 가스", "Post 가스"]),
     ("Case(U/C·L/C)", ["U/C 찍힘", "U/C 도금", "L/C 찍힘", "L/C 도금"]),
 ]
 LAST = ["Marking 불량"]
@@ -62,6 +64,7 @@ _ALIAS = {
     "내경파손": "내경파손", "innerborebreak": "내경파손",
     "미압입": "미압입", "notinserted": "미압입", "missingpress": "미압입", "비압입": "미압입",
     "납조": "납조불량", "탈피": "탈피불량",
+    "bobbingas": "Bobbin 가스", "보빈가스": "Bobbin 가스", "bobbin가스": "Bobbin 가스", "unformed": "미성형",
     "lowercasepress": "미압입",      # lower case press = 미압입(팀장 2026-11-07)
     "misinsert": "Lead Pin 휨",        # misinsert = 핀 휨(팀장 2026-11-07)
 }
