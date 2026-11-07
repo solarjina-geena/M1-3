@@ -121,8 +121,10 @@ def lot_chain(model: Optional[str] = None):
 
 
 @router.get("/lot/{lot_code}")
-def lot_trace(lot_code: str, model: Optional[str] = None):
-    return _wrap(_repo().lot_trace, lot_code, model)
+def lot_trace(lot_code: str, model: Optional[str] = None,
+              process: Optional[str] = Query(None, pattern="^IMEB3_(INJECTION|STITCHING|WINDING|CA_PRESS)$")):
+    """LOT 사슬. 공정을 주면 그 공정의 LOT, 안 주면 CA(제품) LOT 먼저. 모델 없이 여러 모델에 있으면 후보만(ambiguous)."""
+    return _wrap(_repo().lot_trace, lot_code, model if model in ("IV", "OV", "HSV") else None, process)
 
 
 @router.get("/runs/recent")

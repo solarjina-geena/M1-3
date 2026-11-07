@@ -310,15 +310,18 @@ class SupabaseRepository(Repository):
             return {"lot_code": f"26{int(m.group(1)):02d}{int(m.group(2)):02d}D1", "how": "월/일 표기 → 2026년 주간 1번 LOT 코드"}
         return {"lot_code": c, "how": "형식 미상"}
 
-    def lot_trace(self, lot_code: str, model: str | None) -> dict:
+    def lot_trace(self, lot_code: str, model: str | None, process: str | None = None) -> dict:
         resolved = self.resolve_lot_code(lot_code)
         lot_code = resolved["lot_code"]
         params: dict[str, Any] = {"lot_code": f"eq.{lot_code}"}
         if model:
             params["model_code"] = f"eq.{model}"
+        # 질문에 공정이 있으면 그 공정의 LOT 으로 찾는다(2026-11-07 팀장). 마킹코드(ZIC 등)는 CA 제품 표시라 공정 조건을 쓰지 않는다.
+        if process and not resolved.get("marking_code"):
+            params["process_code"] = f"eq.{process}"
         start = self.c.select("m13_lot_chain", params, limit=1000)
         if not start:
-            return {"found": False, "lot_code": lot_code, "model": model, "resolved": resolved}
+            return {"found": False, "lot_code": lot_code, "model": model, "process_code": process, "resolved": resolved}
         # 같은 LOT 번호(날짜+주야)가 공정·모델마다 있다(예 260915D1 = 8개). CA(제품) LOT 을 먼저 고른다(2026-11-07 팀장 결정).
         # 모델을 말하지 않았는데 고를 공정의 LOT 이 여러 모델에 있으면 마음대로 고르지 않고 후보만 돌려준다(화면이 모델을 고르게 함).
         order = {"IMEB3_CA_PRESS": 0, "IMEB3_WINDING": 1, "IMEB3_STITCHING": 2, "IMEB3_INJECTION": 3}
