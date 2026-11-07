@@ -486,55 +486,61 @@ function withRework(g){
  for(const [k,rs] of groups){const [m,d]=k.split('|');const ev=nodes.find(n=>isProd(n)&&n.process==='CA'&&n.variant===m&&n.date===d);if(!ev)continue;const id='rework-'+k;if(nodes.some(n=>n.id===id))continue;
   const sn=rs.filter(r=>r.serial_start_num!=null).map(r=>[r.serial_start_num,r.serial_end_num??r.serial_start_num]).sort((a,b)=>a[0]-b[0]),mark=[...new Set(rs.map(r=>r.mark).filter(Boolean))].join('/');
   const inp=rs.reduce((a,r)=>a+(r.input_qty||r.false_qty||0),0),tr=rs.reduce((a,r)=>a+(r.true_qty||0),0);
-  const txt=`♻ 리워크 ${rs.length}건 · ${mark}${sn.length?' S/N '+sn[0][0]+'~'+sn.at(-1)[1]:''} · 투입 ${inp} · 진성 ${tr}`;
+  const txt=`♻ 리워크 ${rs.length}건 · ${mark}${sn.length?' 시리얼 '+sn[0][0]+'~'+sn.at(-1)[1]:''} · 리워크 투입 ${rs.reduce((a,r)=>a+(r.start_qty||0),0)}`;
   nodes.push({id,kind:'lot',role:'REWORK',process:'CA',date:d,variant:m,label:'리워크',lot_value:txt,display_value:txt,quantity:null,status:'REWORK_RECORD',metric:'REWORK_RECORD',
-   tooltip:rs.map(r=>`${r.part_ko||'리워크'} ${r.mark||''} ${r.serial_start_raw||''}~${r.serial_end_raw||''} · 총 ${r.total_qty??'—'} · 진성 ${r.true_qty??0}${r.true_types?' ('+r.true_types+')':''} · 가성 ${r.false_qty??0}`).join('\n')});
+   tooltip:rs.map(r=>`${r.part_ko||'리워크'} ${r.mark||''} ${r.serial_start_raw||''}~${r.serial_end_raw||''} · 리워크 투입 ${r.start_qty??'—'}${r.first_qty?' (초품 등 '+r.first_qty+')':''}`).join('\n')});
   edges.push({from:id,to:ev.id,status:'LOT_REFERENCE_ONLY',priority:2})}
  return {...g,nodes,edges}}
-let reworkKey='';
+let reworkKey='',reworkLots=null,reworkLotsLoading=false;
 function renderRework(){
  const host=$('#lotGraph');if(!host)return;loadRework();
+ if(!reworkLots&&!reworkLotsLoading){reworkLotsLoading=true;fetch(API_BASE+'/api/rework-by-lot',{cache:'no-store'}).then(r=>r.ok?r.json():[]).then(d=>{reworkLots=Array.isArray(d)?d:[];reworkLotsLoading=false;drawCurrentGraph()}).catch(()=>{reworkLots=[];reworkLotsLoading=false})}
  $('#graphTitle').textContent='리워크 · 용접부(BA 리워크) → 조립부(CA 압입 결과)';
- $('#graphDescription').textContent='리워크는 다시 작업하는 공정입니다(재검 아님). 용접부 리워크 = 보빈아세이(BA) 상태 제품을 BA 에서 리워크해 양품을 CA 에 투입, 조립부 리워크 = 그 제품이 압입(CA) 공정을 지나며 나온 불량. 막대 = 리워크 수량, 진한 부분 = 진성 불량, 연한 부분 = 가성(양품). 위쪽 표시 구간과 모델 선택에 따라 바뀝니다.';
+ $('#graphDescription').textContent='리워크는 다시 작업하는 공정입니다(재검 아님). 막대 = 리워크 투입 수량(용접부 = 가성 + 초품 등, 조립부 = 가성 합). 리워크 불량 내용은 지금은 그래프에서 뺐습니다(표에는 남김). 위쪽 표시 구간과 모델 선택에 따라 바뀝니다.';
  $('#overallGraphLegend').hidden=true;$('#injectionGraphLegend').hidden=true;
  host.replaceChildren();const box=document.createElement('div');box.className='fd-box';host.append(box);
  if(!reworkRows){box.textContent='리워크 기록을 불러오는 중…';return}
  const COL={IV:'#111923',OV:'#e7ad00',HSV:'#2679d8'},TXT={IV:'#111923',OV:'#8a6400',HSV:'#1d5fb0'},models=variant==='ALL'?['IV','OV','HSV']:[variant],fmt=n=>Number(n||0).toLocaleString();
- const rows=reworkRows.filter(r=>models.includes(r.model_code)&&(!axisStart||r.work_date>=axisStart)&&(!axisEnd||r.work_date<=axisEnd));
+ const rows=reworkRows.filter(r=>r.part&&models.includes(r.model_code)&&(!axisStart||r.work_date>=axisStart)&&(!axisEnd||r.work_date<=axisEnd));/* 리워크 일보 기록만(예전 조립 일보의 빈 리워크 줄 제외) */
+ const sm=(l,k)=>l.reduce((x,r)=>x+(r[k]||0),0);
  const sum=document.createElement('div');sum.className='fd-sum';
- for(const m of models){const rs=rows.filter(r=>r.model_code===m);if(!rs.length)continue;const t=rs.reduce((a,r)=>a+(r.total_qty||0),0),tr=rs.reduce((a,r)=>a+(r.true_qty||0),0),f=rs.reduce((a,r)=>a+(r.false_qty||0),0);
-  const c=document.createElement('div');c.className='fd-card';c.style.borderLeftColor=COL[m];const w=rs.filter(r=>r.part==='WELD'),a=rs.filter(r=>r.part==='ASSEMBLY'),sm=(l,k)=>l.reduce((x,r)=>x+(r[k]||0),0);c.innerHTML=`<b style="color:${TXT[m]}">${m}</b> 용접부(BA) 불량 ${fmt(sm(w,'total_qty'))} → 진성 <b>${fmt(sm(w,'true_qty'))}</b> · 가성 ${fmt(sm(w,'false_qty'))} · 리워크 투입 ${fmt(sm(w,'start_qty'))}${sm(w,'first_qty')?` (초품 등 ${fmt(sm(w,'first_qty'))})`:''}<br><small>조립부(CA 압입) 불량 ${fmt(sm(a,'total_qty'))} → 진성 <b>${fmt(sm(a,'true_qty'))}</b> · 가성 = 리워크 투입 ${fmt(sm(a,'start_qty')||sm(a,'false_qty'))}</small>`;sum.append(c)}
+ for(const m of models){const rs=rows.filter(r=>r.model_code===m);if(!rs.length)continue;const w=rs.filter(r=>r.part==='WELD'),a=rs.filter(r=>r.part==='ASSEMBLY');
+  const c=document.createElement('div');c.className='fd-card';c.style.borderLeftColor=COL[m];c.innerHTML=`<b style="color:${TXT[m]}">${m}</b> 리워크 투입 <b>${fmt(sm(w,'start_qty')+sm(a,'start_qty'))}</b> EA<br><small>용접부(BA) ${fmt(sm(w,'start_qty'))}${sm(w,'first_qty')?` (초품 등 ${fmt(sm(w,'first_qty'))})`:''} · 조립부(CA) ${fmt(sm(a,'start_qty'))} · ${new Set(rs.map(r=>r.work_date)).size}일</small>`;sum.append(c)}
  box.append(sum);
  if(!rows.length){const p=document.createElement('p');p.textContent=`표시 구간 ${axisStart||'?'} ~ ${axisEnd||'?'} 에 리워크 기록이 없습니다. 관리 화면 '⑦ 리워크 작업일보'에서 입력하세요.`;box.append(p);return}
  const NS='http://www.w3.org/2000/svg',W=Math.max(640,(host.clientWidth||900)-24);
  const mk=(w,h)=>{const svg=document.createElementNS(NS,'svg');svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.style.cssText=`display:block;width:${w}px;height:${h}px;min-height:0;max-height:none`;const el=(t,a,x)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;svg.append(e);return e};const tip=(e,x)=>{const t=document.createElementNS(NS,'title');t.textContent=x;e.append(t);return e};return{svg,el,tip}};
  const head=(t,parent)=>{const h=document.createElement('div');h.className='vis-h';h.textContent=t;parent.append(h)};
- // ① 일별 리워크 수량(세로): 진성 진하게 + 가성(양품 재투입) 연하게
- const row=document.createElement('div');row.style.cssText='display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap';box.append(row);
- const c1=document.createElement('div');c1.style.cssText='flex:3 1 420px;min-width:0';const c2=document.createElement('div');c2.style.cssText='flex:2 1 300px;min-width:0';row.append(c1,c2);
- {head('① 일별 리워크 수량 — 진성(진한 막대) + 가성·양품(연한 막대)',c1);const dates=[...new Set(rows.map(r=>r.work_date))].sort(),mods=models.filter(m=>rows.some(r=>r.model_code===m));
-  const w1=Math.max(380,Math.floor((W-16)*0.6)),H=260,T=24,B=210,L=44,gw=Math.max(50,(w1-L-10)/dates.length),bw=Math.min(22,(gw-10)/mods.length),w=Math.max(w1,L+dates.length*gw+10);
-  const agg=(d,m)=>{const rs=rows.filter(r=>r.work_date===d&&r.model_code===m);return{t:rs.reduce((a,r)=>a+(r.true_qty||0),0),f:rs.reduce((a,r)=>a+(r.false_qty||0),0),n:rs.length,rs}};
-  const maxV=Math.max(1,...dates.flatMap(d=>mods.map(m=>{const a=agg(d,m);return a.t+a.f}))),Y=v=>(B-T)*v/maxV,{svg,el,tip}=mk(w,H);
+ // 세로 막대 공통: groups=[{label, sub, by:{m:{v1(용접부), v2(조립부), tip}}}] — 용접부 진하게 + 조립부 연하게 쌓기
+ const bars=(parent,title,groups,width,rot)=>{head(title,parent);const mods=models.filter(m=>groups.some(g=>g.by[m]));if(rot&&groups.some(g=>/※$/.test(g.label))){const n=document.createElement('div');n.className='fd-note';n.style.margin='0 0 2px';n.textContent='※ = 그날 CA(조립) 작업일보가 아직 없어 \'CA 작업일보 미확인\' LOT 으로 연결(조립 일보를 넣으면 이어짐)';parent.append(n)}
+  const H=rot?280:250,T=24,B=rot?205:205,L=44,gw=Math.max(rot?52:46,(width-L-24)/Math.max(1,groups.length)),bw=Math.min(20,(gw-10)/Math.max(1,mods.length)),w=Math.max(width,L+groups.length*gw+24);
+  const maxV=Math.max(1,...groups.flatMap(g=>mods.map(m=>(g.by[m]?.v1||0)+(g.by[m]?.v2||0)))),Y=v=>(B-T)*v/maxV,{svg,el,tip}=mk(w,H);
   for(let k=0;k<=4;k++){const y=B-(B-T)*k/4;el('line',{x1:L,x2:w-6,y1:y,y2:y,stroke:'#eef0f2'});el('text',{x:L-6,y:y+4,'text-anchor':'end','font-size':10,fill:'#6b7280'},fmt(Math.round(maxV*k/4)))}
-  dates.forEach((d,i)=>{const gx=L+i*gw+gw/2,x0=gx-mods.length*bw/2;mods.forEach((m,j)=>{const a=agg(d,m);if(!a.n)return;const x=x0+j*bw,h1=Y(a.t),h2=Y(a.f),t=`${d} ${m} 리워크 ${a.n}건 · 진성 ${a.t} · 양품 재투입 ${a.f}\n`+a.rs.map(r=>`${r.part_ko} ${r.mark||''} ${r.serial_start_raw||''}~${r.serial_end_raw||''}${r.true_types?' · '+r.true_types:''}`).join('\n');
-    if(h1>0)tip(el('rect',{x,y:B-h1,width:bw-2,height:Math.max(2,h1),rx:2,fill:COL[m]}),t);if(h2>0)tip(el('rect',{x,y:B-h1-h2,width:bw-2,height:Math.max(2,h2),rx:2,fill:COL[m],'fill-opacity':0.22,stroke:COL[m],'stroke-opacity':0.5}),t);
-    el('text',{x:x+(bw-2)/2,y:B-h1-h2-3,'text-anchor':'middle','font-size':9.5,'font-weight':600,fill:'#374151'},a.t?`${a.t}/${a.t+a.f}`:String(a.f))});
-   el('text',{x:gx,y:B+15,'text-anchor':'middle','font-size':10.5,fill:'#4b5563'},d.slice(5).replace('-','/'))});
-  el('line',{x1:L,x2:w-6,y1:B,y2:B,stroke:'#9ca3af'});const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);c1.append(sc)}
- // ② 리워크에서 나온 진성 불량 유형(세로)
- {head('② 리워크 진성 불량 유형 — 리워크 작업에서 나온 진짜 불량',c2);const types={};for(const r of rows)for(const part of String(r.true_types||'').split(',').map(x=>x.trim()).filter(Boolean)){const mm=part.match(/^(.*?)\s+(\d+)$/);if(!mm)continue;(types[mm[1]]=types[mm[1]]||{})[r.model_code]=((types[mm[1]]||{})[r.model_code]||0)+(+mm[2])}
-  const tl=Object.entries(types).sort((a,b)=>Object.values(b[1]).reduce((x,y)=>x+y,0)-Object.values(a[1]).reduce((x,y)=>x+y,0)).slice(0,10),mods=models.filter(m=>tl.some(t=>t[1][m]));
-  if(!tl.length){const p=document.createElement('p');p.className='fd-note';p.textContent='표시 구간에 리워크 진성 불량이 없습니다.';c2.append(p)}else{
-  const w2=Math.max(300,Math.floor((W-16)*0.4)),H=260,T=24,B=200,L=36,gw=Math.max(56,(w2-L-10)/tl.length),bw=Math.min(18,(gw-12)/Math.max(1,mods.length)),w=Math.max(w2,L+tl.length*gw+10),maxV=Math.max(1,...tl.flatMap(t=>mods.map(m=>t[1][m]||0))),Y=v=>(B-T)*v/maxV,{svg,el,tip}=mk(w,H);
-  tl.forEach(([n,by],i)=>{const gx=L+i*gw+gw/2,x0=gx-mods.length*bw/2;mods.forEach((m,j)=>{const v=by[m]||0;if(!v)return;const h=Y(v);tip(el('rect',{x:x0+j*bw,y:B-h,width:bw-2,height:Math.max(2,h),rx:2,fill:COL[m]}),`${m} ${n} ${v} EA`);el('text',{x:x0+j*bw+(bw-2)/2,y:B-h-3,'text-anchor':'middle','font-size':9.5,'font-weight':600,fill:'#374151'},v)});
-   el('text',{x:gx-2,y:B+13,'text-anchor':'end','font-size':10.5,'font-weight':600,fill:'#1f2937',transform:`rotate(-30 ${gx-2} ${B+13})`},n)});
-  el('line',{x1:L,x2:w-6,y1:B,y2:B,stroke:'#9ca3af'});const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);c2.append(sc)}}
- // ③ S/N 범위 표
- {head('③ 리워크 LOT 시리얼 범위 — 1:1 매칭이 아니라 그 LOT 의 번호 범위(중간에 불량이 빠져 항상 넓음)',box);const t=document.createElement('div');t.style.cssText='overflow-x:auto';
-  t.innerHTML=`<table class="rw-table" style="border-collapse:collapse;font-size:12px;width:100%"><tr>${['리워크일','모델','구분','마킹','CA 시리얼 시작','끝','시리얼 폭','CA LOT','총불량','진성','진성 유형','가성','리워크 투입'].map(h=>`<th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:4px 6px;color:#6b7280">${h}</th>`).join('')}</tr>`+
-   rows.slice().sort((a,b)=>(a.work_date+a.model_code+(a.serial_start_num||0)).localeCompare(b.work_date+b.model_code+(b.serial_start_num||0))).map(r=>`<tr>${[r.work_date,r.model_code,r.part_ko||'',r.mark||'',r.serial_start_raw||'',r.serial_end_raw||'',r.serial_count!=null?fmt(r.serial_count):'—',r.ca_lot_code||'미연결',fmt(r.total_qty),r.true_qty||0,r.true_types||'—',fmt(r.false_qty),(r.start_qty!=null?fmt(r.start_qty):'—')+(r.first_qty?` (초품 등 ${r.first_qty})`:'')].map(v=>`<td style="border-bottom:1px solid #f1f2f4;padding:4px 6px">${String(v).replace(/[<&]/g,c=>({'<':'&lt;','&':'&amp;'}[c]))}</td>`).join('')}</tr>${r.check_note?`<tr><td colspan="13" style="color:#b45309;padding:0 6px 4px">⚠ ${String(r.check_note).replace(/[<&]/g,'')}</td></tr>`:''}`).join('')+'</table>';box.append(t)}
- const n=document.createElement('p');n.className='fd-note';n.textContent=`표시 구간 ${axisStart||'처음'} ~ ${axisEnd||'끝'} · 리워크 ${rows.length}건 · 진성 비율 = 리워크 진성 ÷ 리워크 총 수량 · 최종검사 일보에는 불량품 S/N 이 없어 번호 단위 비교는 아직 못 함(LOT 단위까지)`;box.append(n);
+  groups.forEach((g,i)=>{const gx=L+i*gw+gw/2,x0=gx-mods.length*bw/2;mods.forEach((m,j)=>{const b=g.by[m];if(!b)return;const x=x0+j*bw,h1=Y(b.v1||0),h2=Y(b.v2||0);
+    if(h1>0)tip(el('rect',{x,y:B-h1,width:bw-2,height:Math.max(2,h1),rx:2,fill:COL[m]}),b.tip);if(h2>0)tip(el('rect',{x,y:B-h1-h2,width:bw-2,height:Math.max(2,h2),rx:2,fill:COL[m],'fill-opacity':0.3,stroke:COL[m],'stroke-opacity':0.6}),b.tip);
+    el('text',{x:x+(bw-2)/2,y:B-h1-h2-3,'text-anchor':'middle','font-size':9.5,'font-weight':600,fill:'#374151'},fmt((b.v1||0)+(b.v2||0)))});
+   if(rot)el('text',{x:gx-2,y:B+13,'text-anchor':'end','font-size':10.5,'font-weight':600,fill:'#1f2937',transform:`rotate(-35 ${gx-2} ${B+13})`},g.label);
+   else el('text',{x:gx,y:B+15,'text-anchor':'middle','font-size':10.5,fill:'#4b5563'},g.label);
+   if(g.sub)el('text',{x:gx,y:B+(rot?60:29),'text-anchor':'middle','font-size':9.5,fill:'#b45309'},g.sub)});
+  el('line',{x1:L,x2:w-6,y1:B,y2:B,stroke:'#9ca3af'});const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);parent.append(sc)};
+ const row=document.createElement('div');row.style.cssText='display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap';box.append(row);
+ const c1=document.createElement('div');c1.style.cssText='flex:1 1 380px;min-width:0';const c2=document.createElement('div');c2.style.cssText='flex:1 1 380px;min-width:0';row.append(c1,c2);
+ const half=Math.max(360,Math.floor((W-16)/2));
+ // ① 일별 리워크 투입(용접부 진하게 + 조립부 연하게)
+ {const dates=[...new Set(rows.map(r=>r.work_date))].sort();
+  bars(c1,'① 일별 리워크 투입 — 용접부(진한 막대) + 조립부(연한 막대)',dates.map(d=>({label:d.slice(5).replace('-','/'),by:Object.fromEntries(models.map(m=>{const rs=rows.filter(r=>r.work_date===d&&r.model_code===m);if(!rs.length)return [m,null];const w=rs.filter(r=>r.part==='WELD'),a=rs.filter(r=>r.part==='ASSEMBLY');
+   return [m,{v1:sm(w,'start_qty'),v2:sm(a,'start_qty'),tip:`${d} ${m} 리워크 투입 · 용접부 ${sm(w,'start_qty')}${sm(w,'first_qty')?` (초품 등 ${sm(w,'first_qty')})`:''} · 조립부 ${sm(a,'start_qty')}\n`+rs.map(r=>`${r.part==='WELD'?'용접부 BA 투입부터':'조립부 CA 투입부터'} ${r.mark||''} ${r.serial_start_raw||''}~${r.serial_end_raw||''}`).join('\n')}]}))})),half,false)}
+ // ② LOT 별 리워크 투입(CA LOT, 마킹)
+ {const lots=(reworkLots||[]).filter(l=>models.includes(l.model_code)&&(!axisStart||l.last_rework>=axisStart)&&(!axisEnd||l.first_rework<=axisEnd));
+  if(!reworkLots){const p=document.createElement('p');p.className='fd-note';p.textContent='LOT 별 리워크 수량을 불러오는 중…';c2.append(p)}
+  else{const codes=[...new Set(lots.map(l=>l.ca_lot_code))].sort();
+   bars(c2,'② LOT 별 리워크 투입 — CA LOT(마킹) · 용접부 + 조립부',codes.map(cd=>{const ls=lots.filter(l=>l.ca_lot_code===cd);return{label:`${cd} (${[...new Set(ls.map(l=>l.mark))].join('/')})${ls.some(l=>l.ca_journal_missing)?' ※':''}`,sub:'',
+    by:Object.fromEntries(models.map(m=>{const l=ls.find(x=>x.model_code===m);return [m,l?{v1:l.weld_rework_qty||0,v2:l.assembly_rework_qty||0,tip:`${m} CA LOT ${cd} (${l.mark}) 리워크 ${l.reworks}건 · 용접부 ${l.weld_rework_qty??0}${l.weld_first_qty?` (초품 등 ${l.weld_first_qty})`:''} · 조립부 ${l.assembly_rework_qty??0}\n시리얼 ${l.serial_min??'?'} ~ ${l.serial_max??'?'}${l.ca_journal_missing?'\nCA 작업일보 미입력 LOT(나중에 그날 조립 일보를 넣으면 이어짐)':''}`}:null]}))}}),half,true)}}
+ // ③ 리워크 기록 표(시리얼 범위 · 수량 · 불량 내용은 표에만)
+ {head('③ 리워크 기록 — 시리얼 범위는 그 LOT 의 번호 범위(1:1 아님, 중간에 불량이 빠져 항상 넓음)',box);const t=document.createElement('div');t.style.cssText='overflow-x:auto';
+  t.innerHTML=`<table class="rw-table" style="border-collapse:collapse;font-size:12px;width:100%"><tr>${['리워크일','모델','구분','시리얼 기준','마킹','시리얼 시작','끝','시리얼 폭','CA LOT','총불량','진성','진성 유형','가성','리워크 투입'].map(h=>`<th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:4px 6px;color:#6b7280;white-space:nowrap">${h}</th>`).join('')}</tr>`+
+   rows.slice().sort((a,b)=>(a.work_date+a.model_code+(a.serial_start_num||0)).localeCompare(b.work_date+b.model_code+(b.serial_start_num||0))).map(r=>`<tr>${[r.work_date,r.model_code,r.part_ko||'',r.part==='WELD'?'BA 투입부터':r.part==='ASSEMBLY'?'CA 투입부터':'—',r.mark||'—',r.serial_start_raw||'—',r.serial_end_raw||'—',r.serial_count!=null?fmt(r.serial_count):'—',r.ca_lot_code||'미연결',fmt(r.total_qty),r.true_qty||0,r.true_types||'—',fmt(r.false_qty),(r.start_qty!=null?fmt(r.start_qty):'—')+(r.first_qty?` (초품 등 ${r.first_qty})`:'')].map(v=>`<td style="border-bottom:1px solid #f1f2f4;padding:4px 6px;white-space:nowrap">${String(v).replace(/[<&]/g,c=>({'<':'&lt;','&':'&amp;'}[c]))}</td>`).join('')}</tr>${r.check_note?`<tr><td colspan="14" style="color:#b45309;padding:0 6px 4px">⚠ ${String(r.check_note).replace(/[<&]/g,'')}</td></tr>`:''}`).join('')+'</table>';box.append(t)}
+ const n=document.createElement('p');n.className='fd-note';n.textContent=`표시 구간 ${axisStart||'처음'} ~ ${axisEnd||'끝'} · 리워크 ${rows.length}건 · 리워크 불량 내용은 그래프에서 제외(표에만) · CA 일보 미입력 LOT 은 'CA 작업일보 미확인' LOT 으로 연결되어 나중에 그날 조립 일보를 넣으면 이어짐`;box.append(n);
 }
 
 function renderProcessDaily(){

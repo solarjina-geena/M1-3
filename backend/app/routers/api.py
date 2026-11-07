@@ -872,6 +872,12 @@ def rework_public(date_from: Optional[str] = Query(None, alias="from"), date_to:
     return [r for r in rows if (not date_from or (r["work_date"] or "") >= date_from) and (not date_to or (r["work_date"] or "") <= date_to)]
 
 
+@router.get("/rework-by-lot")
+def rework_by_lot():
+    """대시보드용(공개 읽기): CA LOT 별 리워크 진행 수량(용접부·조립부 리워크 투입, 시리얼 범위). CA 일보 미입력 LOT 표시."""
+    return _wrap(lambda: _repo().c.select("m13_rework_by_lot", {"order": "ca_lot_code.asc,model_code.asc"}, limit=5000))
+
+
 @router.get("/rework-entries")
 def rework_entries(authorization: Optional[str] = Header(None)):
     _admin(authorization)
