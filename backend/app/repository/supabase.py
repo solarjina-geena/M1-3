@@ -329,9 +329,11 @@ class SupabaseRepository(Repository):
         for m in sorted({x["model"] for x in roots.values()}, key=lambda v: {"IV": 0, "OV": 1, "HSV": 2}.get(v, 9)):
             rows = self.chain_rows(m)
             children: dict[str, list] = defaultdict(list)
+            parents: dict[str, list] = defaultdict(list)
             for r in rows:
                 if r["input_lot_id"]:
                     children[r["input_lot_id"]].append(r)
+                    parents[r["lot_id"]].append(r)
             ca_codes: set[str] = set()
             for root in [x for x in roots.values() if x["model"] == m]:
                 nodes[root["lot_id"]] = dict(root, root=True)
@@ -354,6 +356,23 @@ class SupabaseRepository(Repository):
                         if nid not in seen:
                             seen.add(nid)
                             stack.append((nid, depth + 1))
+                # 위(앞 공정) 방향도: CA 로 물으면 권선·스티칭·사출까지 거꾸로 (2026-11-07 팀장)
+                stack = [(root["lot_id"], 0)]
+                seen_up = {root["lot_id"]}
+                while stack:
+                    lid, depth = stack.pop()
+                    if depth > 8:
+                        continue
+                    for r in parents.get(lid, []):
+                        pid = r["input_lot_id"]
+                        nodes.setdefault(pid, {"lot_id": pid, "lot_code": r["input_lot_code"], "process_code": r["input_process_code"], "lot_date": r["input_lot_date"], "model": m})
+                        e = {"from": pid, "to": lid, "status": r["in_status"], "evidence": r["input_evidence"]}
+                        if e not in edges:
+                            edges.append(e)
+                        reach[r["input_process_code"]].add((r["input_lot_code"], r["input_lot_date"]))
+                        if pid not in seen_up:
+                            seen_up.add(pid)
+                            stack.append((pid, depth + 1))
                 if root["process_code"] == "IMEB3_CA_PRESS":
                     ca_codes.add(root["lot_code"])
                 per_root.append({"model": m, "lot_code": root["lot_code"], "lot_date": root["lot_date"],
