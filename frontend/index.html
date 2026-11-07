@@ -386,6 +386,9 @@ function renderVisionDefects(){
   const c=document.createElement('div');c.className='fd-card';c.style.borderLeftColor=COL[m];
   c.innerHTML=`<b style="color:${TXT[m]}">${m}</b> ${rr.length?`비전 불량(작업일보) 1차 ${fmt(st(1))} · 2차 ${fmt(st(2))} · 3차 ${fmt(st(3))}`:"작업일보 비전 불량 기록 없음"}<br><small>${cc.length?`다시 본 수량 ${fmt(ins)} EA → 진성 <b>${fmt(t)}</b> · 가성 ${fmt(f)} <b>(가성 ${pct(f,t+f)})</b>`:"재검사 기록 없음"}</small>`;sum.append(c)}
  box.append(sum);
+ /* (2026-11-07 팀장) 가로·세로 막대 전환 단추 — 고른 것은 이 브라우저에 기억 */
+ if(!window.visOrient){try{window.visOrient=localStorage.getItem('m13visOrient')||'h'}catch(_){window.visOrient='h'}}
+ {const tg=document.createElement('div');tg.className='pos-switch fd-toggle';for(const [v,t] of [['h','가로 막대'],['v','세로 막대']]){const b=document.createElement('button');b.type='button';b.textContent=t;b.className=window.visOrient===v?'on':'';b.onclick=()=>{window.visOrient=v;try{localStorage.setItem('m13visOrient',v)}catch(_){}drawCurrentGraph()};tg.append(b)}box.append(tg)}
  if(!rej.length&&!chk.length){const p=document.createElement('p');p.textContent=`표시 구간 ${axisStart||'?'} ~ ${axisEnd||'?'} 에 비전 불량 기록이 없습니다. (작업일보 비전 불량은 권선 작업일보, 가성/진성은 비전 가성불량 조치 엑셀에서 옵니다)`;box.append(p);return}
  const W=Math.max(640,(host.clientWidth||900)-24),LW=190,RW=300,BH=13,G=4,RG=14;
  const NS='http://www.w3.org/2000/svg';
