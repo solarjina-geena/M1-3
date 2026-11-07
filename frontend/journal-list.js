@@ -47,7 +47,41 @@
       catch (err) { btn.disabled = false; btn.textContent = '삭제'; alert('삭제 실패 · ' + err.message) }
     });
     m13List.show('journal_' + kind, b, rows, opts);
+    if (fin) loadReinsp(); else document.getElementById('jreCard')?.remove();
   }
+  // (2026-11-07 팀장) 최종검사 탭 아래 '저장된 재검사' — 검사자·LOT 범위·LOT 별 수량·불량, 삭제(VOID)
+  async function loadReinsp() {
+    let r = document.getElementById('jreList');
+    if (!r) {
+      const host = document.getElementById('jlistCard'); if (!host) return;
+      const c = document.createElement('div'); c.className = 'card'; c.id = 'jreCard'; c.style.marginTop = '12px';
+      c.innerHTML = '<h3>저장된 재검사 (일보 비고·재검 줄)</h3><div class="sub">재검 1건 = 검사자 1명이 다시 본 LOT 묶음. LOT 범위와 LOT 별 수량(BOX×480·낱개)을 함께 보여 줍니다. 잘못 넣은 재검은 삭제(사유 필수).</div><div id="jreList"></div>';
+      host.after(c); r = document.getElementById('jreList');
+    }
+    if (window.journalKind !== 'FINAL_INSPECTION') { document.getElementById('jreCard')?.remove(); return }
+    let rows = [];
+    try { rows = await api('/api/reinspections?limit=500', { authed: true }) } catch (err) { r.innerHTML = `<div class="err">${e(err.message)}</div>`; return }
+    const fmt = n => n == null ? '—' : Number(n).toLocaleString();
+    const lotsTxt = x => (x.lots || []).map(l => `${e(l.lot_code_raw || '?')}${l.ca_lot_code ? ' <small class="muted">(' + e(l.ca_lot_code) + ')</small>' : ' <small class="warn">(미연결)</small>'} ${l.lot_qty != null ? fmt(l.lot_qty) : '<small class="muted">수량 —</small>'}`).join('<br>');
+    const range = x => { const cs = (x.lots || []).map(l => l.ca_lot_code).filter(Boolean).sort(); return cs.length ? (cs.length > 1 ? `${cs[0]} ~ ${cs.at(-1)}` : cs[0]) + ` · ${(x.lots || []).length}개 LOT` : '—' };
+    m13List.show('journal_reinsp', r, rows, {
+      dateKey: 'inspection_date', timeKey: 'recorded_at', dateLabel: '재검일', empty: '저장된 재검사가 없습니다.',
+      head: '<th>재검일</th><th>모델</th><th>검사자</th><th>방법</th><th>LOT 범위</th><th>LOT 별 수량</th><th>합계</th><th>불량</th><th>출처</th><th>입력 시각</th><th></th>',
+      row: x => `<tr><td>${e(x.inspection_date)}</td><td>${e(x.model_code)}</td><td>${e(x.source?.inspector_masked || '—')}</td><td>${x.inspection_method === 'MICROSCOPE' ? '현미경' : '육안'}${x.source?.inspection_content ? '<br><small class="muted">' + e(x.source.inspection_content) + '</small>' : ''}</td>
+        <td style="white-space:nowrap">${range(x)}</td><td style="white-space:nowrap">${lotsTxt(x)}</td><td>${fmt(x.inspected_qty_ea)}</td>
+        <td style="white-space:nowrap">${(x.findings || []).map(f => e((f.defect || '') + ' ' + fmt(f.qty))).join('<br>') || '—'}</td>
+        <td><small class="muted">${e(x.source?.file || '')}${x.source?.page ? ' · ' + e(x.source.page) + '쪽' : ''}</small></td><td class="muted">${e(typeof m13Time === 'function' ? m13Time(x.recorded_at) : x.recorded_at)}</td>
+        <td><button class="ghost small" type="button" data-rev="${e(x.run_id)}" data-rel="${e(x.model_code + ' ' + x.inspection_date + ' ' + (x.source?.inspector_masked || ''))}">삭제</button></td></tr>`,
+      after: el => el.querySelectorAll('[data-rev]').forEach(btn => btn.onclick = async () => {
+        const note = prompt(`이 재검사를 삭제(무효 처리)할까요?\n${btn.dataset.rel}\n\n삭제 사유를 5자 이상 적어 주세요`); if (note == null) return;
+        if (note.trim().length < 5) { alert('사유를 5자 이상 적어 주세요'); return }
+        btn.disabled = true;
+        try { await api('/api/reinspection/void', { method: 'POST', authed: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run_id: btn.dataset.rev, note: note.trim() }) }); loadReinsp() }
+        catch (err) { btn.disabled = false; alert('삭제 실패 · ' + err.message) }
+      }),
+    });
+  }
+
   window.loadJournalList = load;
   // 저장이 끝나면 목록 다시
   const orig = window.saveAll;

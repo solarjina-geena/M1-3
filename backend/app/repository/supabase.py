@@ -876,7 +876,19 @@ class SupabaseRepository(Repository):
         params: dict[str, Any] = {"order": "inspection_date.desc,recorded_at.desc"}
         if model:
             params["model_code"] = f"eq.{model}"
-        return self.c.select("m13_reinspections", params, limit=limit)
+        rows = self.c.select("m13_reinspections", params, limit=limit)
+        # (2026-11-07) LOT 별 재검 수량(BOX×480·낱개)을 대상 LOT 에 붙인다 — 재검 LOT 범위·LOT 별 수량 집계
+        ids = [r["run_id"] for r in rows if r.get("run_id")]
+        if ids:
+            q: dict[str, int] = {}
+            for i in range(0, len(ids), 80):
+                for lr in self.c.select("m13_reinspection_lot_rows", {"run_id": "in.(" + ",".join(ids[i:i + 80]) + ")",
+                                                                       "select": "inspection_lot_id,lot_qty"}, limit=20000):
+                    q[lr["inspection_lot_id"]] = lr.get("lot_qty")
+            for r in rows:
+                for l in (r.get("lots") or []):
+                    l["lot_qty"] = q.get(l.get("inspection_lot_id"))
+        return rows
 
     def final_defect_types(self) -> list[dict]:
         return self.c.select("defect_type", {"defect_category": "eq.FIN", "record_state": "eq.ACTIVE", "is_active": "eq.true",
