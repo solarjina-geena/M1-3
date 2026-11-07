@@ -10,6 +10,8 @@
   const sel = (path, cur, opts) => `<select data-p="${path}">${opts.map(([v, t]) => `<option value="${v}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
   const inp = (path, v, ph = '', w = '', type = 'text') => `<input type="${type}" data-p="${path}" value="${e(v ?? '')}" placeholder="${e(ph)}" style="${w ? 'width:' + w + ';' : ''}${flag(v) ? 'background:#fff3cd;border-color:#e7ad00' : ''}">`;
   const NUM = /(qty|minutes|boxes|sequence|inspection_round)$/;
+  // 차수 한 칸: 1차검사 = FINAL·1차 / 본검사 = FINAL·2차 / 재검사 = REINSPECTION (2026-11-07 사용자)
+  const clsOf = p => p.inspection_type === 'REINSPECTION' ? 'RE' : (String(p.inspection_round) === '1' ? 'FIRST' : 'MAIN');
 
   function getItem(k) { return (window.pendingItems || [])[k] }
   // 고친 칸 기록: 처음 값(AI·파일이 읽은 값)을 기억해 두고, 바뀐 칸을 payload.source.human_edits 로 저장(사람 판독 확정 칸)
@@ -43,7 +45,7 @@
         <label>순번 ${inp('sequence', p.sequence, '1', '60px', 'number')}</label>
         <label>${fin ? '검사량' : '생산량'} ${inp('gross_output_qty', p.gross_output_qty, '', '110px', 'number')}</label>
         <label>작업시간(분) ${inp('work_minutes', p.work_minutes, '', '90px', 'number')}</label>
-        ${fin ? `<label>검사 구분 ${sel('inspection_type', p.inspection_type || 'FINAL', [['FINAL', '본검사'], ['REINSPECTION', '재검(중복 검사)']])}</label><label>차수 ${sel('inspection_round', p.inspection_round, [['', '미기재 → 2차 본검사'], ['1', '1차(훈련·신입·지원, 합계 제외)'], ['2', '2차(본검사)']])}</label><label>검사자 <small class="muted">(저장 시 가림)</small> ${inp('inspector_raw', p.inspector_raw, '', '110px')}</label>` : ''}
+        ${fin ? `<label>차수 <select data-cls="1">${[['FIRST', '1차검사 (훈련·신입·지원, 합계 제외)'], ['MAIN', '본검사 (2차, 합계)'], ['RE', '재검사 (불량 이슈 재선별, 따로 집계)']].map(([v, t]) => `<option value="${v}" ${clsOf(p) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label>검사자 <small class="muted">(저장 시 가림)</small> ${inp('inspector_raw', p.inspector_raw, '', '110px')}</label>` : ''}
       </div>
       <label class="je-wide">수량 원문 ${inp('raw_quantity_text', p.raw_quantity_text, '', '100%')}</label>
       <label class="je-wide">비고 원문 ${inp('remarks_raw', p.remarks_raw, '', '100%')}</label>
@@ -81,7 +83,15 @@
   function redraw(k) { const tr = document.querySelector(`tr[data-i="${k}"]`), nx = tr?.nextElementSibling; if (nx && nx.classList.contains('je-tr')) { nx.remove(); open(k) } }
 
   document.addEventListener('input', ev => {
-    const t = ev.target, box = t.closest && t.closest('.je'); if (!box || !t.dataset.p) return;
+    const t = ev.target, box = t.closest && t.closest('.je'); if (!box) return;
+    if (t.dataset.cls) {
+      const k = +box.dataset.k, it = getItem(k); if (!it) return; const p = it.payload, bt = p.inspection_type, br = p.inspection_round;
+      p.inspection_type = t.value === 'RE' ? 'REINSPECTION' : 'FINAL'; p.inspection_round = t.value === 'FIRST' ? 1 : 2;
+      track(it, 'inspection_type', bt); track(it, 'inspection_round', br); t.style.background = '#eaf7ea';
+      const st = document.querySelector(`tr[data-i="${k}"] .st-cell`); if (st && !st.dataset.edited) { st.dataset.edited = '1'; st.insertAdjacentHTML('beforeend', '<br><small class="warn">수정됨(저장 전)</small>') }
+      return;
+    }
+    if (!t.dataset.p) return;
     const k = +box.dataset.k, it = getItem(k); if (!it) return;
     const before = getPath(it.payload, t.dataset.p);
     setPath(it.payload, t.dataset.p, t.value);
