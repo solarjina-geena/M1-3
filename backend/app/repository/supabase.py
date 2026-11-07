@@ -319,6 +319,15 @@ class SupabaseRepository(Repository):
         start = self.c.select("m13_lot_chain", params, limit=1000)
         if not start:
             return {"found": False, "lot_code": lot_code, "model": model, "resolved": resolved}
+        # 같은 LOT 번호(날짜+주야)가 공정·모델마다 있다(예 260915D1 = 8개). CA(제품) LOT 을 먼저 고른다(2026-11-07 팀장 결정).
+        # 모델을 말하지 않았는데 고를 공정의 LOT 이 여러 모델에 있으면 마음대로 고르지 않고 후보만 돌려준다(화면이 모델을 고르게 함).
+        order = {"IMEB3_CA_PRESS": 0, "IMEB3_WINDING": 1, "IMEB3_STITCHING": 2, "IMEB3_INJECTION": 3}
+        start.sort(key=lambda r: (order.get(r.get("process_code"), 9), {"IV": 0, "OV": 1, "HSV": 2}.get(r.get("model_code"), 9)))
+        best = order.get(start[0].get("process_code"), 9)
+        top_models = sorted({r["model_code"] for r in start if order.get(r.get("process_code"), 9) == best}, key=lambda m: {"IV": 0, "OV": 1, "HSV": 2}.get(m, 9))
+        if not model and len(top_models) > 1:
+            return {"found": False, "ambiguous": True, "lot_code": lot_code, "model": None, "resolved": resolved,
+                    "process_code": start[0].get("process_code"), "candidates": top_models}
         all_rows = self.chain_rows(start[0]["model_code"])
         by_lot: dict[str, list] = defaultdict(list)
         children: dict[str, list] = defaultdict(list)
