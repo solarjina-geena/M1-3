@@ -43,7 +43,7 @@
         <label>순번 ${inp('sequence', p.sequence, '1', '60px', 'number')}</label>
         <label>${fin ? '검사량' : '생산량'} ${inp('gross_output_qty', p.gross_output_qty, '', '110px', 'number')}</label>
         <label>작업시간(분) ${inp('work_minutes', p.work_minutes, '', '90px', 'number')}</label>
-        ${fin ? `<label>검사 구분 ${sel('inspection_type', p.inspection_type || 'FINAL', [['FINAL', '본검사'], ['REINSPECTION', '재검(중복 검사)']])}</label><label>차수 ${sel('inspection_round', p.inspection_round, [['', '미기재 → 2차 본검사'], ['1', '1차(훈련·신입·지원, 합계 제외)'], ['2', '2차(본검사)']])}</label><label>검사자(가려서 저장) ${inp('inspector_raw', p.inspector_raw, '', '110px')}</label>` : ''}
+        ${fin ? `<label>차수 ${sel('inspection_round', p.inspection_round, [['', '미기재 → 2차 본검사'], ['1', '1차(훈련·신입·지원, 합계 제외)'], ['2', '2차(본검사)']])}</label><label>검사자 <small class="muted">(저장 시 가림)</small> ${inp('inspector_raw', p.inspector_raw, '', '110px')}</label>` : ''}
       </div>
       <label class="je-wide">수량 원문 ${inp('raw_quantity_text', p.raw_quantity_text, '', '100%')}</label>
       <label class="je-wide">비고 원문 ${inp('remarks_raw', p.remarks_raw, '', '100%')}</label>
@@ -67,6 +67,7 @@
     cell(6, (p.materials || []).map(m => e((MATS[m.material] || m.material) + ' ' + (m.lot_date || m.raw || ''))).join('<br>'), (p.materials || []).map(m => m.raw).join(' '));
     cell(7, (p.defects || []).map(d => e(d.name + ' ' + (d.qty ?? d.raw ?? ''))).join('<br>'), (p.defects || []).map(d => d.raw).join(' '));
     cell(8, (p.lots || []).map(l => e(l.raw)).join('<br>'), (p.lots || []).map(l => l.raw).join(' '));
+    const fw = tr.querySelector('.fin-who'); if (fw) fw.innerHTML = e(p.inspector_raw || p.inspector_masked || '—') + '<br><small class="muted">' + ({ 1: '1차', 2: '2차' }[p.inspection_round] || '2차') + '</small>';
   }
   window.journalEditMarkUnsure = () => (window.pendingItems || []).forEach((it, k) => { if (it && it.ok) summary(k) });
 

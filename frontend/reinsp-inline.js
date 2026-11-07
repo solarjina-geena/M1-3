@@ -26,7 +26,7 @@
         <label>특이사항(검사 내용) <input class="ri_content" value="${e(r.inspection_content || '')}" placeholder="현미경 검사 / 와이어 데미지 / 리드핀 찍힘" style="width:170px"></label>
         <label>방법 <select class="ri_method">${opt('VISUAL_MANUAL', r.method, '육안 재검')}${opt('MICROSCOPE', r.method, '현미경 검사')}</select></label>
         <label>검사 수량(EA) <input class="ri_qty" type="number" min="0" value="${e(r.qty_ea ?? '')}" style="width:90px"></label>
-        <label>검사자(가려서 저장) <input class="ri_insp" value="${e(r.inspector_masked || '')}" style="width:80px"></label>
+        <label>검사자 <small class="muted">(저장 시 가림)</small> <input class="ri_insp" value="${e(r.inspector_raw || r.inspector_masked || '')}" style="width:80px"></label>
       </div>
       <table style="margin-top:6px"><tr><th>LOT 마킹</th><th>BOX</th><th>EA</th><th>CA 제품 LOT (FK)</th><th>본검사 연결</th><th></th></tr>${(r.lots || []).map((l, j) => lotRow(l, i, j)).join('')}</table>
       <button class="ghost small" type="button" data-radd="${i}">＋ LOT 줄</button>

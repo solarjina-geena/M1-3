@@ -34,7 +34,8 @@ PROMPT = """이 이미지는 iMEB3 제조 작업일보(사출·스티칭·조립
     그것은 재검사(이미 검사한 LOT 을 다시 본 것)입니다. journals 에 넣지 말고 reinspections 에 한 건씩 뺍니다:
     model, inspection_content(검사 내용 한 가지, 적힌 말 그대로 예 '현미경 검사', '와이어 데미지', '리드핀 찍힘'),
     lots(LOT 마킹코드 mark 와 box_count, EA 가 적혀 있으면 qty_ea), inspected_qty(재검 합계 수량이 적혀 있으면), inspector_raw(재검한 사람 이름, 서버가 가림),
-    defects(재검에서 나온 불량명·수량이 적혀 있으면), remark_raw(그 재검에 해당하는 비고 원문). 한 비고에 재검이 여러 건이면 여러 건으로 나눕니다.
+    defects(재검에서 나온 불량명·수량이 적혀 있으면), remark_raw(그 재검에 해당하는 비고 원문),
+    row_index(그 비고가 적힌 본검사 항목이 journals 배열의 몇 번째인지, 0부터. 어느 줄인지 모르면 null). 한 비고에 재검이 여러 건이면 여러 건으로 나눕니다.
     비고에 재검 내용이 없으면 reinspections 는 빈 배열입니다. 최종검사 본검사 항목의 remarks_raw 에는 비고 원문 전체를 그대로 둡니다.
 
 규칙:
@@ -68,6 +69,7 @@ class ReinspRead(BaseModel):
     inspector_raw: Optional[str] = Field(None, description="재검한 사람 이름(서버가 가림)")
     defects: list[ReinspReadDefect] = Field(default_factory=list)
     remark_raw: Optional[str] = None
+    row_index: Optional[int] = Field(None, description="이 비고가 적힌 본검사 항목의 journals 순서(0부터), 모르면 null")
 
 
 class Extraction(BaseModel):
@@ -144,6 +146,8 @@ def _reinspections(raw: dict, date: str | None, names: list[str]) -> list[dict]:
                     "method": "MICROSCOPE" if "현미경" in content else "VISUAL_MANUAL",
                     "qty_ea": rr.inspected_qty if rr.inspected_qty is not None else (sum(l["qty_ea"] or 0 for l in lots) or None),
                     "inspector_masked": mask_person(rr.inspector_raw) if rr.inspector_raw else None,
+                    # 관리 화면(로그인 사용자만)에서 확인용으로만 보여 준다. 저장은 가린 이름만(화면·서버 모두 가림) 2026-11-07 사용자
+                    "inspector_raw": rr.inspector_raw, "row_index": rr.row_index,
                     "lots": lots, "defects": [{"name": scrub(d.name)[:100], "qty": d.qty} for d in rr.defects if d.name],
                     "remark_raw": (scrub(rr.remark_raw) or "")[:900]})
     return out
