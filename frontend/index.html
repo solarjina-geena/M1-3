@@ -387,35 +387,56 @@ function renderVisionDefects(){
   c.innerHTML=`<b style="color:${TXT[m]}">${m}</b> ${rr.length?`비전 불량(작업일보) 1차 ${fmt(st(1))} · 2차 ${fmt(st(2))} · 3차 ${fmt(st(3))}`:"작업일보 비전 불량 기록 없음"}<br><small>${cc.length?`다시 본 수량 ${fmt(ins)} EA → 진성 <b>${fmt(t)}</b> · 가성 ${fmt(f)} <b>(가성 ${pct(f,t+f)})</b>`:"재검사 기록 없음"}</small>`;sum.append(c)}
  box.append(sum);
  if(!rej.length&&!chk.length){const p=document.createElement('p');p.textContent=`표시 구간 ${axisStart||'?'} ~ ${axisEnd||'?'} 에 비전 불량 기록이 없습니다. (작업일보 비전 불량은 권선 작업일보, 가성/진성은 비전 가성불량 조치 엑셀에서 옵니다)`;box.append(p);return}
- const W=Math.max(640,(host.clientWidth||900)-24),LW=170,RW=260,BH=13,G=4,RG=12;
+ const W=Math.max(640,(host.clientWidth||900)-24),LW=190,RW=300,BH=13,G=4,RG=14;
  const NS='http://www.w3.org/2000/svg';
- // 가로 막대 묶음: groups=[{label, by:{m:{v, v2, text, tip}}}] — v2 가 있으면 v(진하게)+v2(연하게) 이어 붙임
- const chart=(title,groups,mods)=>{
-  const h=document.createElement('div');h.className='vis-h';h.textContent=title;box.append(h);
-  if(!groups.length){const p=document.createElement('p');p.className='fd-note';p.textContent='표시 구간에 자료가 없습니다.';box.append(p);return}
-  const rowH=mods.length*(BH+G)+RG,H=groups.length*rowH+14,maxV=Math.max(1,...groups.flatMap(g=>mods.map(m=>(g.by[m]?.v||0)+(g.by[m]?.v2||0)))),X=v=>(W-LW-RW)*v/maxV;
-  const svg=document.createElementNS(NS,'svg');svg.setAttribute('width',W);svg.setAttribute('height',H);svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.style.cssText=`display:block;width:${W}px;height:${H}px;min-height:0;max-height:none`;
+ // 비전 차수별로 거르는 불량(작업일보 양식에 인쇄된 이름, 팀장 확인 2026-11-07)
+ const STAGE_TXT={1:'미용접 · 이탈 · 여선',2:'권선정열 · Post 파손',3:'와이어 데미지'};
+ const mkSvg=(w,h)=>{const svg=document.createElementNS(NS,'svg');svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.style.cssText=`display:block;width:${w}px;height:${h}px;min-height:0;max-height:none`;
   const el=(t,a,txt)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;svg.append(e);return e};
-  const tip=(e,s)=>{const t=document.createElementNS(NS,'title');t.textContent=s;e.append(t)};
-  groups.forEach((g,i)=>{const y0=6+i*rowH;el('text',{x:LW-8,y:y0+(mods.length*(BH+G))/2+4,'text-anchor':'end','font-size':12,'font-weight':600,fill:'#1f2937'},g.label);
+  const tip=(e,s)=>{const t=document.createElementNS(NS,'title');t.textContent=s;e.append(t);return e};return {svg,el,tip}};
+ const head=(title,empty)=>{const h=document.createElement('div');h.className='vis-h';h.textContent=title;box.append(h);if(empty){const p=document.createElement('p');p.className='fd-note';p.textContent='표시 구간에 자료가 없습니다.';box.append(p);return false}return true};
+ const put=svg=>{const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);box.append(sc)};
+ // 가로 막대: groups=[{label, sub, by:{m:{v, v2, text, tip}}}] — v2 가 있으면 v(진하게)+v2(연하게) 이어 붙임, sub = 이름 아래 작은 글씨
+ const chartH=(title,groups,mods)=>{if(!head(title,!groups.length))return;
+  const rowH=Math.max(mods.length*(BH+G),30)+RG,H=groups.length*rowH+14,maxV=Math.max(1,...groups.flatMap(g=>mods.map(m=>(g.by[m]?.v||0)+(g.by[m]?.v2||0)))),X=v=>(W-LW-RW)*v/maxV;
+  const {svg,el,tip}=mkSvg(W,H);
+  groups.forEach((g,i)=>{const y0=6+i*rowH,mid=y0+Math.max(mods.length*(BH+G),30)/2;
+   el('text',{x:LW-8,y:g.sub?mid-2:mid+4,'text-anchor':'end','font-size':12,'font-weight':600,fill:'#1f2937'},g.label);
+   if(g.sub)el('text',{x:LW-8,y:mid+12,'text-anchor':'end','font-size':10.5,fill:'#6b7280'},g.sub);
    mods.forEach((m,j)=>{const b=g.by[m];if(!b)return;const y=y0+j*(BH+G),w1=X(b.v||0),w2=X(b.v2||0);
     if(w1>0)tip(el('rect',{x:LW,y,width:Math.max(2,w1),height:BH,rx:2,fill:COL[m]}),b.tip||b.text);
     if(w2>0)tip(el('rect',{x:LW+w1,y,width:Math.max(2,w2),height:BH,rx:2,fill:COL[m],'fill-opacity':0.22,stroke:COL[m],'stroke-opacity':0.5}),b.tip||b.text);
     el('text',{x:LW+w1+w2+5,y:y+BH-2,'font-size':11,fill:'#374151'},b.text)});
    el('line',{x1:LW,x2:W-RW,y1:y0+rowH-RG/2,y2:y0+rowH-RG/2,stroke:'#eef0f2'})});
-  el('line',{x1:LW,x2:LW,y1:2,y2:H-4,stroke:'#9ca3af'});
-  const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);box.append(sc)};
+  el('line',{x1:LW,x2:LW,y1:2,y2:H-4,stroke:'#9ca3af'});put(svg)};
+ // 세로 막대(비교용, visOrient='v'): 가로축 = 묶음, 묶음 안 모델 막대, 막대 위 숫자, 아래 이름·작은 글씨
+ const chartV=(title,groups,mods)=>{if(!head(title,!groups.length))return;
+  const H=300,T=26,B=220,L=48,gw=Math.max(120,Math.min(220,(W-L-20)/groups.length)),w=Math.max(W,L+groups.length*gw+20),bw=Math.min(34,(gw-24)/Math.max(1,mods.length)),
+        maxV=Math.max(1,...groups.flatMap(g=>mods.map(m=>(g.by[m]?.v||0)+(g.by[m]?.v2||0)))),Y=v=>(B-T)*v/maxV;
+  const {svg,el,tip}=mkSvg(w,H);
+  for(let k=0;k<=4;k++){const y=B-(B-T)*k/4;el('line',{x1:L,x2:w-10,y1:y,y2:y,stroke:'#eef0f2'});el('text',{x:L-6,y:y+4,'text-anchor':'end','font-size':10,fill:'#6b7280'},fmt(Math.round(maxV*k/4)))}
+  groups.forEach((g,i)=>{const gx=L+i*gw+gw/2,x0=gx-(mods.length*bw)/2;
+   mods.forEach((m,j)=>{const b=g.by[m];if(!b)return;const x=x0+j*bw,h1=Y(b.v||0),h2=Y(b.v2||0);
+    if(h1>0)tip(el('rect',{x,y:B-h1,width:bw-3,height:Math.max(2,h1),rx:2,fill:COL[m]}),b.tip||b.text);
+    if(h2>0)tip(el('rect',{x,y:B-h1-h2,width:bw-3,height:Math.max(2,h2),rx:2,fill:COL[m],'fill-opacity':0.22,stroke:COL[m],'stroke-opacity':0.5}),b.tip||b.text);
+    el('text',{x:x+(bw-3)/2,y:B-h1-h2-4,'text-anchor':'middle','font-size':10.5,'font-weight':600,fill:'#374151'},b.short??b.text)});
+   el('text',{x:gx,y:B+16,'text-anchor':'middle','font-size':12,'font-weight':600,fill:'#1f2937'},g.label);
+   if(g.sub)el('text',{x:gx,y:B+31,'text-anchor':'middle','font-size':10.5,fill:'#6b7280'},g.sub)});
+  el('line',{x1:L,x2:w-10,y1:B,y2:B,stroke:'#9ca3af'});put(svg)};
+ const chart=(window.visOrient==='v')?chartV:chartH;
  const modsOf=list=>models.filter(m=>list.some(r=>r.model===m));
- // ① 작업일보 비전 1·2·3차
+ // ① 작업일보 비전 1·2·3차 — 차수마다 거르는 불량 내용을 이름 아래에
  const rm=modsOf(rej);
- chart('① 비전 차수별 불량 수량 — 작업일보(설비가 걸러낸 수량)',[1,2,3].map(k=>({label:`비전 ${k}차`,by:Object.fromEntries(rm.map(m=>{const q=rej.filter(r=>r.model===m&&r.stage===k).reduce((a,r)=>a+r.qty,0);return [m,q?{v:q,text:`${fmt(q)} EA`,tip:`${m} 비전 ${k}차 ${fmt(q)} EA (${new Set(rej.filter(r=>r.model===m&&r.stage===k).map(r=>r.date)).size}일)`}:null]}))})).filter(g=>rm.some(m=>g.by[m])),rm);
+ chart('① 비전 차수별 불량 수량 — 작업일보(설비가 걸러낸 수량)',[1,2,3].map(k=>({label:`비전 ${k}차`,sub:STAGE_TXT[k],by:Object.fromEntries(rm.map(m=>{const q=rej.filter(r=>r.model===m&&r.stage===k).reduce((a,r)=>a+r.qty,0);return [m,q?{v:q,text:`${fmt(q)} EA`,short:fmt(q),tip:`${m} 비전 ${k}차(${STAGE_TXT[k]}) ${fmt(q)} EA (${new Set(rej.filter(r=>r.model===m&&r.stage===k).map(r=>r.date)).size}일)`}:null]}))})).filter(g=>rm.some(m=>g.by[m])),rm);
  // ② 다시 본 결과: 진성(진하게) + 가성(연하게)
  const cm=modsOf(chk);
- chart('② 다시 본 결과 — 진성(진한 막대) + 가성(연한 막대), 가성불량 조치 엑셀',[1,2].map(k=>({label:`비전 ${k}차 재검사`,by:Object.fromEntries(cm.map(m=>{const cc=chk.filter(r=>r.model===m&&r.round===k),ins=cc.reduce((a,r)=>a+r.inspected,0),t=cc.reduce((a,r)=>a+r.true,0),f=cc.reduce((a,r)=>a+r.false,0);return [m,cc.length?{v:t,v2:f,text:`검사 ${fmt(ins)} · 진성 ${fmt(t)} · 가성 ${fmt(f)} (가성 ${pct(f,t+f)})`,tip:`${m} 비전 ${k}차 재검사 ${cc.length}건`}:null]}))})).filter(g=>cm.some(m=>g.by[m])),cm);
- // ③ 진성 불량 유형별
- const types={};for(const r of chk)for(const [n,q] of Object.entries(r.types)){(types[n]=types[n]||{})[r.model]=(types[n][r.model]||0)+q}
- const tl=Object.entries(types).sort((a,b)=>Object.values(b[1]).reduce((x,y)=>x+y,0)-Object.values(a[1]).reduce((x,y)=>x+y,0));
- chart('③ 진성 불량 유형별 수량 — 사람이 확인한 진짜 불량',tl.map(([n,by])=>({label:n,by:Object.fromEntries(cm.map(m=>[m,by[m]?{v:by[m],text:`${fmt(by[m])} EA`,tip:`${m} ${n} ${fmt(by[m])} EA`}:null]))})),cm);
+ chart('② 다시 본 결과 — 진성(진한 막대) + 가성(연한 막대), 가성불량 조치 엑셀',[1,2].map(k=>({label:`비전 ${k}차 재검사`,sub:STAGE_TXT[k],by:Object.fromEntries(cm.map(m=>{const cc=chk.filter(r=>r.model===m&&r.round===k),ins=cc.reduce((a,r)=>a+r.inspected,0),t=cc.reduce((a,r)=>a+r.true,0),f=cc.reduce((a,r)=>a+r.false,0);return [m,cc.length?{v:t,v2:f,text:`검사 ${fmt(ins)} · 진성 ${fmt(t)} · 가성 ${fmt(f)} (가성 ${pct(f,t+f)})`,short:`${fmt(t)}/${fmt(t+f)}`,tip:`${m} 비전 ${k}차 재검사 ${cc.length}건 · 검사 ${fmt(ins)} · 진성 ${fmt(t)} · 가성 ${fmt(f)} (가성 ${pct(f,t+f)})`}:null]}))})).filter(g=>cm.some(m=>g.by[m])),cm);
+ // ③ 진성 불량 유형별 — 어느 차수 재검사에서 나왔는지(소속) 함께
+ const types={};for(const r of chk)for(const [n,q] of Object.entries(r.types)){const a=((types[n]=types[n]||{})[r.model]=types[n][r.model]||{q:0,r:{}});a.q+=q;a.r[r.round]=(a.r[r.round]||0)+q}
+ const tot=by=>Object.values(by).reduce((x,y)=>x+y.q,0),rsum=by=>{const o={};for(const a of Object.values(by))for(const [k,v] of Object.entries(a.r))o[k]=(o[k]||0)+v;return o};
+ const tl=Object.entries(types).sort((a,b)=>tot(b[1])-tot(a[1]));
+ const belong=r=>Object.keys(r).sort().map(k=>`${k}차 ${fmt(r[k])}`).join(' · ');
+ chart('③ 진성 불량 유형별 수량 — 사람이 확인한 진짜 불량 (소속 = 몇 차 비전에서 걸러진 것인지)',tl.map(([n,by])=>({label:n,sub:'소속 '+Object.keys(rsum(by)).sort().map(k=>k+'차').join('·'),by:Object.fromEntries(cm.map(m=>[m,by[m]?{v:by[m].q,text:`${fmt(by[m].q)} EA (${belong(by[m].r)})`,short:fmt(by[m].q),tip:`${m} ${n} ${fmt(by[m].q)} EA — ${belong(by[m].r)}`}:null]))})),cm);
  const span=l=>{const d=l.map(r=>r.date).sort();return d.length?d[0]+' ~ '+d[d.length-1]:'없음'},nr=chk.filter(r=>r.needs_review).length;
  const n=document.createElement('p');n.className='fd-note';n.textContent=[`표시 구간 ${axisStart||'처음'} ~ ${axisEnd||'끝'}`,`작업일보 비전 불량 자료 ${span(rej)}`,`재검사 자료 ${span(chk)}`,'가성률 = 가성 ÷ (진성 + 가성)',nr?`엑셀 합계가 맞지 않는 재검사 ${nr}건은 엑셀 값 그대로(확인 필요)`:''].filter(Boolean).join(' · ');box.append(n);
 }
