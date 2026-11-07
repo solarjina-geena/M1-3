@@ -127,6 +127,14 @@ def lot_trace(lot_code: str, model: Optional[str] = None,
     return _wrap(_repo().lot_trace, lot_code, model if model in ("IV", "OV", "HSV") else None, process)
 
 
+@router.get("/lot-flow")
+def lot_flow(date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+             process: str = Query("IMEB3_INJECTION", pattern="^IMEB3_(INJECTION|STITCHING|WINDING|CA_PRESS)$"),
+             model: Optional[str] = None):
+    """날짜 + 공정의 LOT 들이 다음 공정에서 언제 쓰였고 최종검사는 언제였는지(DB LOT 연결만 따라감)."""
+    return _wrap(_repo().lot_flow, date, process, model if model in ("IV", "OV", "HSV") else None)
+
+
 @router.get("/runs/recent")
 def recent_runs(model: Optional[str] = None, limit: int = 50):
     return _wrap(_repo().recent_runs, model, limit)

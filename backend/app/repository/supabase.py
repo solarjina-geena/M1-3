@@ -310,6 +310,69 @@ class SupabaseRepository(Repository):
             return {"lot_code": f"26{int(m.group(1)):02d}{int(m.group(2)):02d}D1", "how": "월/일 표기 → 2026년 주간 1번 LOT 코드"}
         return {"lot_code": c, "how": "형식 미상"}
 
+    def lot_flow(self, date: str, process: str, model: str | None) -> dict:
+        """날짜 + 공정 → 그날 그 공정의 LOT 들(주간·야간, 모델별)에서 아래 공정으로: 다음 공정에서 언제 쓰였고(스티칭→BA→CA) 최종검사는 언제였는지.
+        DB LOT 연결(m13_lot_chain 의 투입 LOT FK)만 따라간다(추정 없음). 최종검사는 CA LOT 에 연결된 검사(m13_lot_inspections). 2026-11-07"""
+        params: dict[str, Any] = {"process_code": f"eq.{process}", "lot_date": f"eq.{date}"}
+        if model:
+            params["model_code"] = f"eq.{model}"
+        start = self.c.select("m13_lot_chain", params, limit=1000)
+        roots: dict[str, dict] = {}
+        for r in start:
+            roots.setdefault(r["lot_id"], {"lot_id": r["lot_id"], "lot_code": r["lot_code"], "process_code": r["process_code"], "lot_date": r["lot_date"], "model": r["model_code"]})
+        if not roots:
+            return {"found": False, "date": date, "process_code": process, "model": model}
+        nodes: dict[str, dict] = {}
+        edges: list[dict] = []
+        insp: list[dict] = []
+        per_root = []
+        for m in sorted({x["model"] for x in roots.values()}, key=lambda v: {"IV": 0, "OV": 1, "HSV": 2}.get(v, 9)):
+            rows = self.chain_rows(m)
+            children: dict[str, list] = defaultdict(list)
+            for r in rows:
+                if r["input_lot_id"]:
+                    children[r["input_lot_id"]].append(r)
+            ca_codes: set[str] = set()
+            for root in [x for x in roots.values() if x["model"] == m]:
+                nodes[root["lot_id"]] = dict(root, root=True)
+                seen = {root["lot_id"]}
+                stack = [(root["lot_id"], 0)]
+                reach = defaultdict(set)
+                while stack:
+                    lid, depth = stack.pop()
+                    if depth > 8:
+                        continue
+                    for r in children.get(lid, []):
+                        nid = r["lot_id"]
+                        nodes.setdefault(nid, {"lot_id": nid, "lot_code": r["lot_code"], "process_code": r["process_code"], "lot_date": r["lot_date"], "model": m})
+                        e = {"from": lid, "to": nid, "status": r["in_status"], "evidence": r["input_evidence"]}
+                        if e not in edges:
+                            edges.append(e)
+                        reach[r["process_code"]].add((r["lot_code"], r["lot_date"]))
+                        if r["process_code"] == "IMEB3_CA_PRESS":
+                            ca_codes.add(r["lot_code"])
+                        if nid not in seen:
+                            seen.add(nid)
+                            stack.append((nid, depth + 1))
+                if root["process_code"] == "IMEB3_CA_PRESS":
+                    ca_codes.add(root["lot_code"])
+                per_root.append({"model": m, "lot_code": root["lot_code"], "lot_date": root["lot_date"],
+                                 **{k: sorted(v, key=lambda t: (t[1] or '', t[0])) for k, v in reach.items()}})
+            if ca_codes:
+                for i in self.c.select("m13_lot_inspections", {"model_code": f"eq.{m}"}, limit=100000):
+                    if i["lot_code"] in ca_codes:
+                        insp.append(i)
+        # 요약(대화창·표): 뿌리 LOT 마다 다음 공정 LOT·날짜, CA LOT 마다 검사 날짜·구분·수량
+        summ_insp: dict[tuple, dict] = {}
+        for i in insp:
+            k = (i["model_code"], i["lot_code"], i["inspection_date"], i["inspection_class"])
+            a = summ_insp.setdefault(k, {"model": k[0], "ca_lot": k[1], "inspection_date": k[2], "class": k[3], "rows": 0, "qty_ea": 0})
+            a["rows"] += 1
+            a["qty_ea"] += i.get("lot_qty_ea") or 0
+        return {"found": True, "date": date, "process_code": process, "model": model, "roots": list(roots.values()), "per_root": per_root,
+                "nodes": list(nodes.values()), "edges": edges, "inspections": insp,
+                "inspection_summary": sorted(summ_insp.values(), key=lambda a: (a["model"], a["ca_lot"], a["inspection_date"]))}
+
     def lot_trace(self, lot_code: str, model: str | None, process: str | None = None) -> dict:
         resolved = self.resolve_lot_code(lot_code)
         lot_code = resolved["lot_code"]

@@ -26,6 +26,8 @@ SYSTEM = """당신은 제조 품질 데이터 분석 도우미입니다. 제품�
 - 최종검사 수량은 2차(통상 본검사)만 합한 값입니다. 1차는 검사 훈련·신입·타 제품 검사자 지원·연습이라 합치지 않고, 재검은 불량 이슈로 검사 완료품을 다시 본 것이라 재검 LOT 별 수량·불량·불량률을 따로 말합니다(get_inspection_breakdown). 이슈 뒤 본검사에서 같은 불량을 얼마나 찾았는지는 issue_defects 로 나란히 말하고, 재검 LOT 이 '(LOT 기록 누락)'이면 확인 필요라고 알립니다.
 - 사람 판단 기록: 확인이 필요한 항목은 get_review_queue, 지난 판단은 get_judgment_history, 비슷한 사례는 find_similar_judgments 로 찾습니다. 판단은 사람이 내리는 것이므로 "제안"으로만 말하고, 지난 판단을 근거로 들 때는 결정·날짜·LOT·근거 메모를 그대로 인용합니다. 누가 판단했는지는 말하지 않습니다.
 - 답은 화면에 평문으로 보입니다. 마크다운 기호(**, #, |표)를 쓰지 말고 짧은 문장과 '- ' 목록으로 씁니다. 도구 결과의 내부 키 이름(found, first_gap 같은 영문)은 그대로 쓰지 말고 우리말로 풀어 씁니다.
+- 날짜와 공정으로 아래 방향 흐름을 물으면(예: "9/10 사출 LOT 흐름", "9/3 스티칭 LOT 이 언제 쓰였나") get_lot_flow(date, process) 를 씁니다. 공정 말이 없으면 process 는 IMEB3_CA_PRESS(제품) 입니다. 답은 뿌리 LOT 마다 "스티칭 언제 → 권선(BA) 언제 → 압입(CA) 언제 → 최종검사 언제(2차 본검사 수량, 1차·재검은 따로)" 순서로 요약하고, 다음 공정 연결이 없는 LOT 은 "연결된 다음 공정 기록 없음"이라고 합니다. 연결은 DB LOT 연결(후보 CANDIDATE 포함)만이며 추정하지 않습니다. 어느 LOT 이 어느 LOT 으로 이어졌는지는 결과의 links 목록만 근거로 말합니다.
+- LOT 번호로 물었는데 결과가 ambiguous(같은 번호가 여러 모델에 있음)면 candidates 의 모델마다 model 을 넣어 다시 조회하고 모델별로 나눠 답합니다. 질문에 공정이 있으면 get_lot_history 에 process 를 넣습니다(사출=IMEB3_INJECTION, 스티칭=IMEB3_STITCHING, 권선=IMEB3_WINDING, 압입·CA=IMEB3_CA_PRESS).
 - 한국어로 간결하게 답합니다."""
 
 TOOLS: list[dict[str, Any]] = [
@@ -42,8 +44,14 @@ TOOLS: list[dict[str, Any]] = [
      "input_schema": {"type": "object", "properties": {"process": {"type": "string", "enum": list(PROCESS_LABEL)}, "model": {"type": "string", "enum": ["IV", "OV", "HSV"]},
                                                        "date_from": {"type": "string"}, "date_to": {"type": "string"}}, "additionalProperties": False}},
     {"name": "get_lot_history", "description": "LOT 하나의 상위·하위 연결, 투입 자재, 최종검사 결과. lot_code 에는 LOT 코드(260903D1), 최종검사 마킹코드(ZIC), 날짜(2026-09-03, 9/3) 중 아무거나 넣어도 된다.",
-     "input_schema": {"type": "object", "properties": {"lot_code": {"type": "string"}, "model": {"type": "string", "enum": ["IV", "OV", "HSV"]}},
+     "input_schema": {"type": "object", "properties": {"lot_code": {"type": "string"}, "model": {"type": "string", "enum": ["IV", "OV", "HSV"]},
+                                                       "process": {"type": "string", "enum": ["IMEB3_INJECTION", "IMEB3_STITCHING", "IMEB3_WINDING", "IMEB3_CA_PRESS"]}},
                       "required": ["lot_code"], "additionalProperties": False}},
+    {"name": "get_lot_flow", "description": "날짜+공정의 LOT 들(주간·야간, 모델별)이 다음 공정(스티칭→권선 BA→압입 CA)에서 언제 쓰였고 그 CA LOT 의 최종검사가 언제였는지(아래 방향). DB LOT 연결만 따라감.",
+     "input_schema": {"type": "object", "properties": {"date": {"type": "string", "description": "YYYY-MM-DD"},
+                                                       "process": {"type": "string", "enum": ["IMEB3_INJECTION", "IMEB3_STITCHING", "IMEB3_WINDING", "IMEB3_CA_PRESS"]},
+                                                       "model": {"type": "string", "enum": ["IV", "OV", "HSV"]}},
+                      "required": ["date", "process"], "additionalProperties": False}},
     {"name": "get_injection_conditions", "description": "사출조건(사출기 DS120-1 체크시트) 시계열. lot_code 를 주면 그 LOT 을 만든 보빈(사출) LOT 의 사출 실행을 기준으로 앞 4건·뒤 3건 조건 기록, 없으면 전체 기간. 우선 인자 1순위 사출압력·보압, 2순위 전환위치·쿠션, 3순위 온도와 보빈무게 실측·SPEC 을 돌려준다. lot_code 에는 마킹코드(ZIC), LOT 코드(260827D1), 날짜를 넣을 수 있다.",
      "input_schema": {"type": "object", "properties": {"lot_code": {"type": "string"}, "model": {"type": "string", "enum": ["IV", "OV", "HSV"]}},
                       "additionalProperties": False}},
@@ -77,7 +85,15 @@ def run_tool(repo: Repository, name: str, args: dict) -> Any:
     if name == "get_quality_results":
         return repo.defects(args.get("process"), args.get("model"), args.get("date_from"), args.get("date_to"))[:40]
     if name == "get_lot_history":
-        return repo.lot_trace(args["lot_code"], args.get("model"))
+        return repo.lot_trace(args["lot_code"], args.get("model"), args.get("process"))
+    if name == "get_lot_flow":
+        f = repo.lot_flow(args["date"], args["process"], args.get("model"))
+        out = {k: f.get(k) for k in ("found", "date", "process_code", "model", "roots", "per_root", "inspection_summary")}
+        nm = {n["lot_id"]: n for n in f.get("nodes") or []}
+        PK = {"IMEB3_INJECTION": "사출", "IMEB3_STITCHING": "스티칭", "IMEB3_WINDING": "권선(BA)", "IMEB3_CA_PRESS": "압입(CA)"}
+        lab = lambda n: f"{n['model']} {PK.get(n['process_code'], n['process_code'])} {n['lot_code']}({n['lot_date']})"
+        out["links"] = [f"{lab(nm[e['from']])} -> {lab(nm[e['to']])} [{e['status']}]" for e in f.get("edges") or [] if e["from"] in nm and e["to"] in nm]  # 연결선 그대로(이것만 근거로 말함)
+        return out
     if name == "get_injection_conditions":
         w = repo.injection_window(args.get("lot_code") or None, args.get("model"))
         for r in w["records"]:  # AI 에는 값·SPEC 만 짧게
