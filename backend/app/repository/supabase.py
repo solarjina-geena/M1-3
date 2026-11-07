@@ -842,6 +842,31 @@ class SupabaseRepository(Repository):
         payload.setdefault("actor", settings.actor)
         return self.c.rpc("m13_reinspection_save", {"p": payload})
 
+    def journal_entries(self, process: str | None, model: str | None) -> list[dict]:
+        """저장된 작업일보(공정 실행) 목록 — 관리 화면 작업일보 탭 아래 목록(2026-11-07)."""
+        params: dict[str, Any] = {"order": "recorded_at.desc"}
+        if process:
+            params["process_code"] = f"in.({process})"
+        if model:
+            params["model_code"] = f"eq.{model}"
+        return self.c.select("m13_journal_entries", params, limit=3000)
+
+    def final_entries(self, model: str | None) -> list[dict]:
+        params: dict[str, Any] = {"order": "recorded_at.desc"}
+        if model:
+            params["model_code"] = f"eq.{model}"
+        return self.c.select("m13_final_entries", params, limit=3000)
+
+    def final_void(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_final_void", {"p": payload})
+
+    def journal_void(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_journal_void", {"p": payload})
+
     def reinspection_void(self, payload: dict[str, Any]) -> dict:
         self._guard()
         payload.setdefault("actor", settings.actor)

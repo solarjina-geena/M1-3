@@ -221,7 +221,7 @@ def journal_preview(payload: JournalPayload):
 
 STAGE_LABEL = {"IMEB3_INJECTION": "사출", "IMEB3_STITCHING": "스티칭", "IMEB3_WINDING": "권선(BA)", "IMEB3_CA_PRESS": "압입(CA)",
                "IMEB3_FINAL_INSPECTION": "최종검사"}
-VIA_LABEL = {"reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기", "injection": "사출조건 체크시트", "bobbin": "보빈 위치도 엑셀"}
+VIA_LABEL = {"journal_void": "작업일보 목록 삭제", "reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기", "injection": "사출조건 체크시트", "bobbin": "보빈 위치도 엑셀"}
 
 
 def _actor(who: dict) -> str:
@@ -759,6 +759,56 @@ def bobbin_position_checks(model: Optional[str] = Query(None, pattern="^(IV|OV|H
                            date_to: Optional[str] = Query(None, alias="to")):
     """사출 보빈 초품 위치도(대시보드 사출 화면용 공개 읽기). 판정은 DB 뷰가 기준값으로 계산."""
     return _wrap(_repo().bobbin_position_checks, model, date_from, date_to)
+
+
+@router.get("/journal-entries")
+def journal_entries(process: Optional[str] = Query(None, pattern=r"^IMEB3_[A-Z_]+(,IMEB3_[A-Z_]+)*$"), model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"),
+                    authorization: Optional[str] = Header(None)):
+    """저장된 작업일보 목록(관리 화면 작업일보 탭 아래). 공정은 쉼표로 여러 개(조립 = 권선·압입)."""
+    _admin(authorization)
+    return _wrap(_repo().journal_entries, process, model)
+
+
+class JournalVoidIn(BaseModel):
+    run_id: str
+    note: str
+
+
+@router.post("/journal/void")
+def journal_void(body: JournalVoidIn, authorization: Optional[str] = Header(None)):
+    """잘못 저장·중복 저장한 작업일보 실행 1건을 하위 기록과 함께 삭제(VOID). 행은 지우지 않는다."""
+    who = _admin(authorization)
+    note = body.note.strip()
+    if not 5 <= len(note) <= 300 or _PII.search(note):
+        raise HTTPException(400, "삭제 사유는 5~300자, 이메일·전화번호 형태 금지")
+    if not re.fullmatch(r"[0-9a-f-]{36}", body.run_id or ""):
+        raise HTTPException(400, "작업일보 번호가 올바르지 않습니다")
+    row = next(iter(_repo().c.select("m13_journal_entries", {"run_id": f"eq.{body.run_id}"}, limit=1)), None) or {}
+    what = f"{row.get('model_code') or ''} {row.get('work_date') or ''} LOT {row.get('lot_code') or '-'}".strip()
+    return _wrap(_repo().journal_void, {"run_id": body.run_id, "note": note, "actor": _actor(who),
+                                        "reason": _reason(row.get("process_code") or "", "journal_void", f"작업일보 삭제(VOID) · {what} · {note}")})
+
+
+@router.get("/final-entries")
+def final_entries(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"), authorization: Optional[str] = Header(None)):
+    """저장된 최종검사 본검사 목록(관리 화면 ⑦ 탭 아래)."""
+    _admin(authorization)
+    return _wrap(_repo().final_entries, model)
+
+
+@router.post("/final/void")
+def final_void(body: JournalVoidIn, authorization: Optional[str] = Header(None)):
+    """잘못·중복 저장한 최종검사 본검사 1건 삭제(VOID): 검사 LOT·불량·재검 연결·출처 연결 함께."""
+    who = _admin(authorization)
+    note = body.note.strip()
+    if not 5 <= len(note) <= 300 or _PII.search(note):
+        raise HTTPException(400, "삭제 사유는 5~300자, 이메일·전화번호 형태 금지")
+    if not re.fullmatch(r"[0-9a-f-]{36}", body.run_id or ""):
+        raise HTTPException(400, "검사 번호가 올바르지 않습니다")
+    row = next(iter(_repo().c.select("m13_final_entries", {"run_id": f"eq.{body.run_id}"}, limit=1)), None) or {}
+    what = f"{row.get('model_code') or ''} {row.get('inspection_date') or ''} {row.get('inspector') or ''} {row.get('inspected_qty_ea') or ''}EA".strip()
+    return _wrap(_repo().final_void, {"run_id": body.run_id, "note": note, "actor": _actor(who),
+                                      "reason": _reason("IMEB3_FINAL_INSPECTION", "journal_void", f"본검사 삭제(VOID) · {what} · {note}")})
 
 
 @router.get("/bobbin-position-entries")

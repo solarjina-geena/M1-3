@@ -240,7 +240,7 @@ class JournalPayload(BaseModel):
         # 고치기 기록: 이름 칸(검사자·작업자)은 AI 값·사람 값 모두 가려서 남기고, 다른 칸의 자유 문장에 섞인 이름도 가린다.
         edits = d["source"].get("human_edits") or []
         for e in edits:
-            if re.search(r"inspector_raw|workers_raw|name$", e.get("path") or ""):
+            if re.fullmatch(r"inspector_raw|workers_raw\.\d+\.name", e.get("path") or ""):   # 사람 이름 칸만(불량 이름 defects.N.name 은 가리지 않음, 2026-11-07)
                 raw_names += [x for x in (e.get("ai"), e.get("value")) if x]
                 e["ai"], e["value"] = mask_person(e.get("ai")) if e.get("ai") else None, mask_person(e.get("value")) if e.get("value") else None
                 e["path"] = re.sub(r"inspector_raw", "inspector_masked", re.sub(r"workers_raw", "workers_masked", e["path"]))
