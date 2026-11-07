@@ -36,6 +36,7 @@ PROMPT = """이 이미지는 iMEB3 제조 작업일보(사출·스티칭·조립
     lots(LOT 마킹코드 mark 와 box_count, EA 가 적혀 있으면 qty_ea), inspected_qty(재검 합계 수량이 적혀 있으면), inspector_raw(재검한 사람 이름, 서버가 가림),
     defects(재검에서 나온 불량명·수량이 적혀 있으면), remark_raw(그 재검에 해당하는 비고 원문),
     row_index(그 비고가 적힌 본검사 항목이 journals 배열의 몇 번째인지, 0부터. 어느 줄인지 모르면 null). 한 비고에 재검이 여러 건이면 여러 건으로 나눕니다.
+    검사자·검사수량 칸이 없는 표(기종별 LOT NO·BOX수량 집계표, 재고표 등)는 작업일보가 아니므로 journals 를 만들지 않고 uncertain_notes 에 그 사실만 씁니다.
     비고에 재검 내용이 없으면 reinspections 는 빈 배열입니다. 최종검사 본검사 항목의 remarks_raw 에는 비고 원문 전체를 그대로 둡니다.
 
 규칙:

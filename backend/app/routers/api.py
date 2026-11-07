@@ -401,6 +401,12 @@ async def journal_preview_image(request: Request, file: UploadFile = File(...), 
                 for it in out.get("items") or []:
                     if it.get("ok") and isinstance(it.get("payload"), dict):
                         it["payload"].setdefault("source", {})["page"] = page
+            # 검사자·검사량이 모두 없는 최종검사 '항목'은 일보가 아니라 LOT·BOX 집계표 등을 잘못 읽은 것(10/7 11쪽) → 저장 목록에서 뺀다
+            for it in out.get("items") or []:
+                pl = it.get("payload") if isinstance(it.get("payload"), dict) else {}
+                if it.get("ok") and pl.get("process") == "IMEB3_FINAL_INSPECTION" and not pl.get("inspector_raw") and pl.get("gross_output_qty") in (None, 0):
+                    it["ok"] = False
+                    it["error"] = f"{pl.get('model') or ''} 검사자·검사량이 없어 작업일보가 아닌 것으로 봄(LOT·BOX 집계표 등){' · ' + str(page) + '쪽' if page else ''} — 저장 안 함"
             out["items"] = _mark_existing(out.get("items") or [])
             out["reinspections"] = await asyncio.to_thread(_enrich_reinsp, out.get("reinspections") or [])
             await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, label, media, t0, True,
