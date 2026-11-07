@@ -113,15 +113,19 @@
     const fmt = n => n == null ? '—' : Number(n).toLocaleString();
     m13List.show('rework', $('#rk_list'), rows, {
       dateKey: 'work_date', timeKey: 'recorded_at', dateLabel: '리워크일', empty: '저장된 리워크가 없습니다.',
-      head: '<th>리워크일</th><th>모델</th><th>구분</th><th>CA 시리얼 (마킹 · 시작~끝)</th><th>시리얼 폭</th><th>CA LOT</th><th>총불량</th><th>진성</th><th>진성 유형</th><th>가성</th><th>리워크 투입</th><th>입력 시각</th><th></th>',
+      head: '<th>리워크일</th><th>모델</th><th>구분</th><th>CA 시리얼 (마킹 · 시작~끝)</th><th>시리얼 폭</th><th>CA LOT</th><th>총불량</th><th>진성</th><th>진성 유형</th><th>가성</th><th>리워크 투입</th><th>특이사항</th><th>입력 시각</th><th></th>',
       row: r => `<tr><td>${e(r.work_date)}${Number(r.same_count) > 1 ? ' <span class="m13-badge" style="background:#c62828">중복 ' + r.same_count + '</span>' : ''}</td><td>${e(r.model_code)}</td><td>${e(r.part_ko || '리워크')}</td>
         <td style="white-space:nowrap">${e(r.mark || '')} ${e(r.serial_start_raw || '')}${r.serial_end_raw ? ' ~ ' + e(r.serial_end_raw) : ''}</td><td>${fmt(r.serial_count)}</td><td>${e(r.ca_lot_code || '—')}</td>
         <td>${fmt(r.total_qty)}</td><td class="err">${r.true_qty || ''}</td><td style="white-space:nowrap">${e(r.true_types || '—')}${r.check_note ? `<br><small class="warn">${e(r.check_note)}</small>` : ''}</td><td>${fmt(r.false_qty)}</td><td><b>${fmt(r.start_qty)}</b>${r.first_qty ? `<br><small class="muted">초품 등 ${fmt(r.first_qty)}</small>` : ''}</td>
-        <td class="muted">${e(m13Time(r.recorded_at))}</td><td><button class="ghost small" type="button" data-rkv="${e(r.rework_id)}" data-rkl="${e(r.work_date + ' ' + r.model_code + ' ' + (r.part_ko || ''))}">삭제</button></td></tr>`,
-      after: box => box.querySelectorAll('[data-rkv]').forEach(b => b.onclick = () => {
+        <td style="max-width:220px">${r.memo ? `${e(r.memo)}<br><small class="muted">${e(r.memo_at || '')}</small>` : '<small class="muted">—</small>'}</td>
+        <td class="muted">${e(m13Time(r.recorded_at))}</td><td><div class="act-col"><button class="ghost small" type="button" data-rkm="${e(r.rework_id)}" data-rkmv="${e(r.memo || '')}" data-rkl2="${e(r.work_date + ' ' + r.model_code + ' ' + (r.part_ko || ''))}">특이사항</button><button class="ghost small" type="button" data-rkv="${e(r.rework_id)}" data-rkl="${e(r.work_date + ' ' + r.model_code + ' ' + (r.part_ko || ''))}">삭제</button></div></td></tr>`,
+      after: box => { box.querySelectorAll('[data-rkm]').forEach(b => b.onclick = () => {
+        const memo = prompt(b.dataset.rkl2 + ' 리워크 특이사항(나중에 확인한 내용)을 적으세요.\n예) 설비 고장으로 비전 불량 다량 → BA 리워크, 원인 확인 중\n비우고 확인을 누르면 지웁니다.', b.dataset.rkmv || ''); if (memo === null) return;
+        job('rework', '특이사항 저장', async () => { await api('/api/rework/memo', { method: 'POST', authed: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rework_id: b.dataset.rkm, memo }) }); loadList(); return '특이사항 ' + (memo.trim() ? '저장' : '지움') + ' · ' + b.dataset.rkl2 }).catch(() => { });
+      }); box.querySelectorAll('[data-rkv]').forEach(b => b.onclick = () => {
         const note = prompt(b.dataset.rkl + ' 리워크를 삭제(VOID)할까요?\n사유를 5자 이상 적어 주세요'); if (note === null) return;
         job('rework', '삭제', async () => { await api('/api/rework/void', { method: 'POST', authed: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rework_id: b.dataset.rkv, note }) }); loadList(); return '삭제(VOID) · ' + b.dataset.rkl }).catch(() => { });
-      }),
+      }) },
     });
   }
   function init() {

@@ -866,7 +866,7 @@ def rework_save(body: ReworkSaveIn, authorization: Optional[str] = Header(None))
 @router.get("/rework")
 def rework_public(date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
     """대시보드용 리워크(공개 읽기): 작업자·원문 메모는 빼고 S/N 범위·수량·CA LOT·진성 유형만."""
-    keep = ("rework_id", "model_code", "work_date", "part", "part_ko", "mark", "marked_lot_date", "serial_start_raw", "serial_end_raw", "start_qty", "first_qty",
+    keep = ("rework_id", "model_code", "work_date", "part", "part_ko", "mark", "marked_lot_date", "serial_start_raw", "serial_end_raw", "start_qty", "first_qty", "memo", "memo_at",
             "serial_start_num", "serial_end_num", "serial_count", "total_qty", "input_qty", "true_qty", "false_qty", "true_types", "ca_lot_code", "check_note")
     rows = [{k: r.get(k) for k in keep} for r in _repo().rework_entries()]
     return [r for r in rows if (not date_from or (r["work_date"] or "") >= date_from) and (not date_to or (r["work_date"] or "") <= date_to)]
@@ -882,6 +882,22 @@ def rework_by_lot():
 def rework_entries(authorization: Optional[str] = Header(None)):
     _admin(authorization)
     return _wrap(_repo().rework_entries)
+
+
+class ReworkMemoIn(BaseModel):
+    rework_id: str
+    memo: str = ""
+
+
+@router.post("/rework/memo")
+def rework_memo(body: ReworkMemoIn, authorization: Optional[str] = Header(None)):
+    """리워크 기록에 특이사항(확인 메모)을 나중에 붙인다. 빈 값이면 지움. 이름·이메일·전화번호 형태 금지."""
+    who = _admin(authorization)
+    memo = body.memo.strip()
+    if len(memo) > 500 or (memo and _PII.search(memo)):
+        raise HTTPException(400, "특이사항은 500자까지, 이메일·전화번호 형태 금지")
+    return _wrap(_repo().rework_memo, {"rework_id": body.rework_id, "memo": memo, "actor": _actor(who),
+                                       "reason": _reason("IMEB3_CA_PRESS", "rework", f"리워크 특이사항 · {memo or '(지움)'}")})
 
 
 class ReworkVoidIn(BaseModel):
