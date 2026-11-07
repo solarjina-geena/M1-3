@@ -8,7 +8,7 @@
   const PAGE = 30, NEW_MS = 15 * 60 * 1000, st = {};
   const css = document.createElement('style');
   css.textContent = '.m13-lv-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0;font-size:12px}.m13-lv-bar input[type=date]{width:auto;padding:3px 6px}'
-    + 'tr.m13-new td{background:#eef9ee}.m13-badge{display:inline-block;font-size:10px;padding:0 5px;border-radius:8px;background:#2e7d32;color:#fff;margin-left:4px;vertical-align:1px}';
+    + 'tr.m13-new td{background:var(--ok-bg,#eef9ee)}.m13-badge{display:inline-block;font-size:10px;padding:0 5px;border-radius:8px;background:#2e7d32;color:#fff;margin-left:4px;vertical-align:1px}';
   document.head.appendChild(css);
   const esc2 = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 

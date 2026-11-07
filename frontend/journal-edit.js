@@ -8,7 +8,7 @@
   const procOpts = cur => Object.entries(PROC).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v}</option>`).join('');
   const matOpts = cur => Object.entries(MATS).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v}</option>`).join('') + (cur && !MATS[cur] ? `<option selected value="${e(cur)}">${e(cur)}</option>` : '');
   const sel = (path, cur, opts) => `<select data-p="${path}">${opts.map(([v, t]) => `<option value="${v}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
-  const inp = (path, v, ph = '', w = '', type = 'text') => `<input type="${type}" data-p="${path}" value="${e(v ?? '')}" placeholder="${e(ph)}" style="${w ? 'width:' + w + ';' : ''}${flag(v) ? 'background:#fff3cd;border-color:#e7ad00' : ''}">`;
+  const inp = (path, v, ph = '', w = '', type = 'text') => `<input type="${type}" data-p="${path}" value="${e(v ?? '')}" placeholder="${e(ph)}" style="${w ? 'width:' + w + ';' : ''}${flag(v) ? 'background:var(--flag-bg);border-color:#e7ad00' : ''}">`;
   const NUM = /(qty|minutes|boxes|sequence|inspection_round)$/;
   // 차수 한 칸: 1차검사 = FINAL·1차 / 본검사 = FINAL·2차 / 재검사 = REINSPECTION (2026-11-07 사용자)
   const clsOf = p => p.inspection_type === 'REINSPECTION' ? 'RE' : (String(p.inspection_round) === '1' ? 'FIRST' : 'MAIN');
@@ -62,7 +62,7 @@
   function summary(k) {
     const it = getItem(k), p = it.payload, tr = document.querySelector(`tr[data-i="${k}"]`); if (!tr) return;
     const off = tr.querySelector('.st-cell') ? [...tr.children].indexOf(tr.querySelector('.st-cell')) : 0, td = i => tr.children[off + i];
-    const cell = (i, html, raw) => { const c = td(i); if (!c) return; c.innerHTML = html; c.style.background = flag(raw) ? '#fff3cd' : ''; };
+    const cell = (i, html, raw) => { const c = td(i); if (!c) return; c.innerHTML = html; c.style.background = flag(raw) ? 'var(--flag-bg)' : ''; };
     cell(1, e(p.model)); cell(2, e(PROC[p.process] || p.process));
     cell(4, e(p.gross_output_qty ?? '—'), p.gross_output_qty);
     cell(5, (p.inputs || []).map(x => e((PROC[x.process] || x.process || '') + ' ' + (x.lot_date || x.raw || ''))).join('<br>'), (p.inputs || []).map(x => x.raw + ' ' + x.lot_date).join(' '));
@@ -77,7 +77,7 @@
     const tr = document.querySelector(`tr[data-i="${k}"]`); if (!tr) return;
     const nx = tr.nextElementSibling; if (nx && nx.classList.contains('je-tr')) { nx.remove(); return }
     const row = document.createElement('tr'); row.className = 'je-tr';
-    row.innerHTML = `<td colspan="${tr.children.length}" style="background:#f7fbff;text-align:left">${editorHtml(k, getItem(k).payload)}</td>`;
+    row.innerHTML = `<td colspan="${tr.children.length}" style="background:var(--edit-bg);text-align:left">${editorHtml(k, getItem(k).payload)}</td>`;
     tr.after(row);
   }
   function redraw(k) { const tr = document.querySelector(`tr[data-i="${k}"]`), nx = tr?.nextElementSibling; if (nx && nx.classList.contains('je-tr')) { nx.remove(); open(k) } }
@@ -97,7 +97,7 @@
     setPath(it.payload, t.dataset.p, t.value);
     track(it, t.dataset.p, before);
     if (t.dataset.p === 'inspection_type') { if (t.value === 'REINSPECTION' && !it.payload.inspection_round) it.payload.inspection_round = 2; redraw(k); }
-    t.style.background = flag(t.value) ? '#fff3cd' : '#eaf7ea'; t.style.borderColor = flag(t.value) ? '#e7ad00' : '#5cb85c';
+    t.style.background = flag(t.value) ? 'var(--flag-bg)' : 'var(--ok-bg)'; t.style.borderColor = flag(t.value) ? '#e7ad00' : '#5cb85c';
     const st = document.querySelector(`tr[data-i="${k}"] .st-cell`); if (st && !st.dataset.edited) { st.dataset.edited = '1'; st.insertAdjacentHTML('beforeend', '<br><small class="warn">수정됨(저장 전)</small>') }
   });
   document.addEventListener('change', ev => { const t = ev.target; if (t.tagName === 'SELECT' && t.closest && t.closest('.je')) t.dispatchEvent(new Event('input', { bubbles: true })) });
