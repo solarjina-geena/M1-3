@@ -46,6 +46,8 @@ PROMPT = """이 이미지는 iMEB3 제조 작업일보(사출·스티칭·조립
 - iMEB3 작업일보만 읽습니다. 일보 제목·라인·품목(ITEM)이 iMEB3 가 아니면(예: 'MEB5 라인', 'TYCO Line', 'MEB5-Coil Ass'y', IDB 등) 양식에 IV/OV/HSV 칸이 인쇄되어 있거나 동그라미가 쳐져 있어도 journals 를 만들지 않고 uncertain_notes 에 '타 제품(라인) 일보 — 제외'라고만 적습니다.
 - 모델이 IV/OV/HSV 중 어느 것인지 확실하지 않으면 그 항목을 만들지 말고 uncertain_notes 에 이유를 적습니다. OV/HSV 합산 양식이면 합산 수량을 나누지 않습니다.
 - 사람 이름: 생산 공정의 작업자(작업자 칸·근무 현황)는 workers_raw 에 한 명씩(name, 역할을 알면 role: 작업자=OPERATOR, 셋업=SETUP, 반장·조장=SUPERVISOR),
+  최종검사 일보에서 iMEB3 에 없는 불량(탈피불량·납조불량)이 보이면 그 칸·열은 다른 제품(MEB5·IM-5 등)입니다. iMEB3 항목에 넣지 않고 uncertain_notes 에 적습니다.
+  비고나 검사 Item 에 MEB-5·IM-5·MEB5 가 적힌 열/장은 iMEB3 가 아니므로 항목을 만들지 않습니다.
   최종검사 검사자는 inspector_raw 에 적습니다. 서버가 가운데 글자를 가려 저장하고 원문은 버립니다. 이름을 비고·note 같은 다른 칸에 옮겨 적지 않습니다.
 - 페이지에 있는데 위 항목에 없는 정보는 source.note 에 짧게 남깁니다.
 """

@@ -14,8 +14,29 @@ STANDARD = [
     "Wire 이탈", "Wire 늘어짐", "Wire Damage", "여선불량", "탈피불량",
     "Lead Pin 휨", "Lead Pin 찍힘", "Lead Pin 도금", "Pin 도금", "Pin 찍힘",
     "U/C 찍힘", "U/C 도금", "L/C 찍힘", "L/C 도금",
-    "용접찍힘버", "용접불량", "Marking 불량", "내경파손", "미압입", "납조불량",
+    "용접버", "용접불량", "Marking 불량", "내경파손", "미압입",
 ]
+
+# iMEB3 에 없는 불량(팀장 확인 2026-11-07) — 보이면 같은 장의 다른 제품 칸을 읽은 것. 화면 집계에서 빼고 개수만 알린다.
+NOT_IMEB3 = {"탈피불량", "납조불량"}
+
+# 표시 순서(팀장 2026-11-07): 비슷한 불량끼리 붙여 보이게 묶음 순서 → 묶음 안에서는 수량 많은 순. Marking 은 리워크 가능이라 맨 끝.
+GROUPS = [
+    ("와이어·핀·용접", ["Wire Damage", "Lead Pin 찍힘", "Lead Pin 휨", "용접버", "Wire 이탈", "Wire 늘어짐", "여선불량", "용접불량", "Lead Pin 도금"]),
+    ("보빈·Post·압입", ["Bobbin 파손", "Post 파손", "미압입", "Bobbin 미성형", "Post 미성형", "Bobbin 이물", "보빈 안흔들림", "내경파손"]),
+    ("Case(U/C·L/C)", ["U/C 찍힘", "U/C 도금", "L/C 찍힘", "L/C 도금"]),
+]
+LAST = ["Marking 불량"]
+
+
+def group_of(name: str) -> tuple[int, str]:
+    """(묶음 순서, 묶음 이름). 목록에 없는 원문 이름은 '기타'(Case 다음), Marking 은 맨 끝."""
+    if name in LAST:
+        return (9, "리워크 가능")
+    for i, (g, names) in enumerate(GROUPS):
+        if name in names:
+            return (i, g)
+    return (len(GROUPS), "기타")
 
 # 원문 표기(정규화 키) → 기준 이름. 뜻이 같은 것이 분명한 것만.
 _ALIAS = {
@@ -31,14 +52,16 @@ _ALIAS = {
     "여선": "여선불량", "yeseon": "여선불량",
     "탈피": "탈피불량",
     "leadpin휨": "Lead Pin 휨", "leadpinbent": "Lead Pin 휨", "leadpinbend": "Lead Pin 휨",
-    "leadpin찍힘": "Lead Pin 찍힘", "leadpin도금": "Lead Pin 도금", "pin도금": "Pin 도금", "pin찍힘": "Pin 찍힘",
-    "u/c찍힘": "U/C 찍힘", "uc찍힘": "U/C 찍힘", "u/c도금": "U/C 도금", "upper_case_plating": "U/C 도금", "uppercaseplating": "U/C 도금",
+    "leadpin찍힘": "Lead Pin 찍힘", "leadpin도금": "Lead Pin 도금", "pin도금": "Lead Pin 도금", "pin찍힘": "Lead Pin 찍힘",
+    "leadpindent": "Lead Pin 찍힘", "pinnick": "Lead Pin 찍힘", "리드도금": "Lead Pin 도금",   # 핀 = 리드핀(같은 부품)
+    "u/c찍힘": "U/C 찍힘", "uc찍힘": "U/C 찍힘", "uppercasenick": "U/C 찍힘", "uppercasedent": "U/C 찍힘",
+    "lowercasenick": "L/C 찍힘", "lowercasedent": "L/C 찍힘", "lowercasedentmark": "L/C 찍힘", "u/c도금": "U/C 도금", "upper_case_plating": "U/C 도금", "uppercaseplating": "U/C 도금",
     "l/c찍힘": "L/C 찍힘", "lc찍힘": "L/C 찍힘", "l/c도금": "L/C 도금", "lowercaseplating": "L/C 도금",
-    "용접찍힘버": "용접찍힘버", "용접": "용접불량",
+    "용접찍힘버": "용접버", "용접버": "용접버", "용접": "용접불량",   # 용접찍힘버 = 용접버(같은 불량, 팀장 2026-11-07)
     "marking": "Marking 불량",
     "내경파손": "내경파손", "innerborebreak": "내경파손",
     "미압입": "미압입", "notinserted": "미압입", "missingpress": "미압입", "비압입": "미압입",
-    "납조": "납조불량",
+    "납조": "납조불량", "탈피": "탈피불량",
 }
 
 

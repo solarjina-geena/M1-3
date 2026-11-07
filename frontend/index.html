@@ -295,21 +295,47 @@ function renderFinalDefects(){
  box.append(sum);
  const val=(d,m)=>{const b=d.by[m]?.[CLS];if(!b)return 0;return finMetric==='ppm'?(b.ppm||0):b.qty};
  let types=finDefData.defects.filter(d=>models.some(m=>(d.by[m]?.[CLS]?.qty||0)>0));
- types.sort((a,b)=>models.reduce((s,m)=>s+val(b,m),0)-models.reduce((s,m)=>s+val(a,m),0));
+ const tq=d=>models.reduce((s,m)=>s+val(d,m),0);
  if(!types.length){const p=document.createElement('p');p.textContent=`표시 구간 ${axisStart||'?'} ~ ${axisEnd||'?'} 에 본검사 불량 기록이 없습니다.`;box.append(p);return}
- const LIMIT=20,more=types.length-LIMIT;types=types.slice(0,LIMIT);
- const W=Math.max(640,(host.clientWidth||900)-24),LW=150,RW=150,BH=13,G=4,RG=12,rowH=models.length*(BH+G)+RG,H=types.length*rowH+30,maxV=Math.max(1,...types.flatMap(d=>models.map(m=>val(d,m)))),X=v=>LW+(W-LW-RW)*v/maxV;
- const NS='http://www.w3.org/2000/svg',svg=document.createElementNS(NS,'svg');svg.setAttribute('width',W);svg.setAttribute('height',H);svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.style.display='block';
- const el=(t,a,txt)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;svg.append(e);return e};
- types.forEach((d,i)=>{const y0=10+i*rowH;
-  const lb=el('text',{x:LW-8,y:y0+(models.length*(BH+G))/2+4,'text-anchor':'end','font-size':12,'font-weight':600,fill:'#1f2937'},d.name);const tt=document.createElementNS(NS,'title');tt.textContent='원문 표기: '+(d.originals||[]).join(', ');lb.append(tt);
-  models.forEach((m,j)=>{const b=d.by[m]?.[CLS],y=y0+j*(BH+G),v=val(d,m);
-   const r=el('rect',{x:LW,y,width:Math.max(v>0?2:0,X(v)-LW),height:BH,rx:2,fill:COL[m]});const t2=document.createElementNS(NS,'title');t2.textContent=`${m} ${d.name}: ${b?fmt(b.qty)+' EA · '+(b.ppm==null?'PPM 계산 불가(검사수량 없음)':fmt(b.ppm)+' PPM'):'0'}`;r.append(t2);
-   if(b&&b.qty)el('text',{x:X(v)+5,y:y+BH-2,'font-size':11,fill:'#374151'},`${fmt(b.qty)} (${b.ppm==null?'PPM 계산 불가':fmt(b.ppm)+' PPM'})`)});
-  el('line',{x1:LW,x2:W-RW,y1:y0+rowH-RG/2,y2:y0+rowH-RG/2,stroke:'#eef0f2'})});
- el('line',{x1:LW,x2:LW,y1:4,y2:H-16,stroke:'#9ca3af'});
+ // (2026-11-07 팀장) 많은 순 상위 20개를 고른 뒤, 비슷한 불량끼리 묶음 순서로(와이어·핀·용접 → 보빈·Post·압입 → Case → 기타 → Marking 맨 끝)
+ const LIMIT=20,more=Math.max(0,types.length-LIMIT);
+ types=[...types].sort((a,b)=>tq(b)-tq(a)).slice(0,LIMIT).sort((a,b)=>(a.group_order??5)-(b.group_order??5)||tq(b)-tq(a));
+ // 가로·세로 전환(브라우저에 기억)
+ if(!window.finOrient){try{window.finOrient=localStorage.getItem('m13finOrient')||'h'}catch(_){window.finOrient='h'}}
+ {const tg=document.createElement('div');tg.className='pos-switch fd-toggle';for(const [v,t] of [['h','가로 막대'],['v','세로 막대']]){const b=document.createElement('button');b.type='button';b.textContent=t;b.className=window.finOrient===v?'on':'';b.onclick=()=>{window.finOrient=v;try{localStorage.setItem('m13finOrient',v)}catch(_){}drawCurrentGraph()};tg.append(b)}box.append(tg)}
+ const NS='http://www.w3.org/2000/svg',maxV=Math.max(1,...types.flatMap(d=>models.map(m=>val(d,m))));
+ const mk=(w,h)=>{const svg=document.createElementNS(NS,'svg');svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.style.cssText=`display:block;width:${w}px;height:${h}px;min-height:0;max-height:none`;return svg};
+ const lab=(d,m)=>{const b=d.by[m]?.[CLS];return b&&b.qty?`${fmt(b.qty)} (${b.ppm==null?'PPM 계산 불가':fmt(b.ppm)+' PPM'})`:''};
+ const tipTxt=(d,m)=>{const b=d.by[m]?.[CLS];return `${m} ${d.name}: ${b?fmt(b.qty)+' EA · '+(b.ppm==null?'PPM 계산 불가(검사수량 없음)':fmt(b.ppm)+' PPM'):'0'}${d.group?' · 묶음 '+d.group:''}`};
+ let svg,el;
+ if(window.finOrient==='v'){
+  // 세로: 가로축 = 불량 유형(묶음별로 붙여서, 묶음 사이 간격), 막대 위 = 수량, 마우스 = PPM
+  const T=40,B=250,L=48,GAP=18,ng=new Set(types.map(d=>d.group)).size,avail=Math.max(600,(host.clientWidth||900)-24)-L-18-(ng-1)*GAP,gw=Math.max(models.length*7+8,Math.min(70,avail/types.length)),bw=Math.min(16,(gw-8)/models.length);/* 그래프 칸 폭에 맞춤 */
+  let x=L+8;const pos=[];let prevG=null;types.forEach(d=>{if(prevG!==null&&d.group!==prevG)x+=GAP;pos.push(x);x+=gw;prevG=d.group});
+  const W=Math.max((host.clientWidth||900)-24,x+10),H=B+64,Y=v=>(B-T)*v/maxV;svg=mk(W,H);
+  el=(t,a,txt)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;svg.append(e);return e};
+  for(let k=0;k<=4;k++){const y=B-(B-T)*k/4;el('line',{x1:L,x2:W-6,y1:y,y2:y,stroke:'#eef0f2'});el('text',{x:L-6,y:y+4,'text-anchor':'end','font-size':10,fill:'#6b7280'},fmt(Math.round(maxV*k/4)))}
+  // 묶음 이름(위쪽 띠)
+  let gs=null;types.forEach((d,i)=>{if(d.group!==gs?.g){gs={g:d.group,x0:pos[i]};gs.el=el('text',{x:pos[i],y:16,'font-size':11,'font-weight':700,fill:'#4b5563'},d.group||'');gs.line=el('line',{x1:pos[i],x2:pos[i]+gw-6,y1:22,y2:22,stroke:'#cbd5e1','stroke-width':2})}else gs.line.setAttribute('x2',pos[i]+gw-6)});
+  types.forEach((d,i)=>{const x0=pos[i]+(gw-models.length*bw)/2;
+   models.forEach((m,j)=>{const v=val(d,m);if(!v)return;const h=Y(v),r=el('rect',{x:x0+j*bw,y:B-h,width:bw-2,height:Math.max(2,h),rx:2,fill:COL[m]});const t=document.createElementNS(NS,'title');t.textContent=tipTxt(d,m);r.append(t);
+    el('text',{x:x0+j*bw+(bw-2)/2,y:B-h-3,'text-anchor':'middle','font-size':9.5,'font-weight':600,fill:'#374151'},fmt(v))});
+   const lb=el('text',{x:pos[i]+gw/2-3,y:B+14,'text-anchor':'end','font-size':11,'font-weight':600,fill:'#1f2937',transform:`rotate(-35 ${pos[i]+gw/2-3} ${B+14})`},d.name);const tt=document.createElementNS(NS,'title');tt.textContent='원문 표기: '+(d.originals||[]).join(', ');lb.append(tt)});
+  el('line',{x1:L,x2:W-6,y1:B,y2:B,stroke:'#9ca3af'});
+ }else{
+  // 가로: 묶음 이름 줄을 끼워 넣고, 그 아래 유형별 모델 막대
+  const W=Math.max(640,(host.clientWidth||900)-24),LW=150,RW=150,BH=13,G=4,RG=12,GH=22,rowH=models.length*(BH+G)+RG,ngroups=new Set(types.map(d=>d.group)).size,H=types.length*rowH+ngroups*GH+30,X=v=>LW+(W-LW-RW)*v/maxV;
+  svg=mk(W,H);el=(t,a,txt)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;svg.append(e);return e};
+  let y0=6,prevG=null;
+  types.forEach(d=>{if(d.group!==prevG){el('text',{x:8,y:y0+15,'font-size':11.5,'font-weight':700,fill:'#4b5563'},d.group||'');el('line',{x1:8,x2:W-RW,y1:y0+19,y2:y0+19,stroke:'#cbd5e1'});y0+=GH;prevG=d.group}
+   const lb=el('text',{x:LW-8,y:y0+(models.length*(BH+G))/2+4,'text-anchor':'end','font-size':12,'font-weight':600,fill:'#1f2937'},d.name);const tt=document.createElementNS(NS,'title');tt.textContent='원문 표기: '+(d.originals||[]).join(', ');lb.append(tt);
+   models.forEach((m,j)=>{const b=d.by[m]?.[CLS],y=y0+j*(BH+G),v=val(d,m);
+    const r=el('rect',{x:LW,y,width:Math.max(v>0?2:0,X(v)-LW),height:BH,rx:2,fill:COL[m]});const t2=document.createElementNS(NS,'title');t2.textContent=tipTxt(d,m);r.append(t2);
+    if(b&&b.qty)el('text',{x:X(v)+5,y:y+BH-2,'font-size':11,fill:'#374151'},lab(d,m))});
+   el('line',{x1:LW,x2:W-RW,y1:y0+rowH-RG/2,y2:y0+rowH-RG/2,stroke:'#eef0f2'});y0+=rowH});
+ }
  const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);box.append(sc);
- const notes=[`표시 구간 ${axisStart||'처음'} ~ ${axisEnd||'끝'} · 본검사(2차)만 · 1차검사(훈련)·재검사 제외`,'불량명은 같은 불량의 다른 표기(예: marking·Marking 불량)를 묶어 표시 — 이름에 마우스를 올리면 원문 표기',more>0?`상위 ${LIMIT}개만 표시(나머지 ${more}개 유형)`:'',finDefData.null_qty_findings?`수량이 빈 불량 줄 ${finDefData.null_qty_findings}건은 막대에서 제외(1차·재검 포함 전체)`:'',finDefData.qty_without_inspected?`검사수량이 빈 검사의 불량 ${fmt(finDefData.qty_without_inspected)} EA 는 막대에는 넣고 PPM 에서는 제외`:''].filter(Boolean);
+ const notes=[`표시 구간 ${axisStart||'처음'} ~ ${axisEnd||'끝'} · 본검사(2차)만 · 1차검사(훈련)·재검사 제외`,'불량명은 같은 불량의 다른 표기(예: marking·Marking 불량)를 묶어 표시 — 이름에 마우스를 올리면 원문 표기',more>0?`상위 ${LIMIT}개만 표시(나머지 ${more}개 유형)`:'',finDefData.not_imeb3_qty?`iMEB3 에 없는 불량(탈피·납조) ${fmt(finDefData.not_imeb3_qty)} EA 는 다른 제품 칸을 읽은 것이라 제외`:'',finDefData.null_qty_findings?`수량이 빈 불량 줄 ${finDefData.null_qty_findings}건은 막대에서 제외(1차·재검 포함 전체)`:'',finDefData.qty_without_inspected?`검사수량이 빈 검사의 불량 ${fmt(finDefData.qty_without_inspected)} EA 는 막대에는 넣고 PPM 에서는 제외`:''].filter(Boolean);
  const n=document.createElement('p');n.className='fd-note';n.textContent=notes.join(' · ');box.append(n);
 }
 // ---- 전체 흐름 · LOT 사슬 그래프 (2026-11-07 팀장): "9/10 사출 LOT 흐름"처럼 날짜+공정으로 물으면 그날 그 공정 LOT 들이

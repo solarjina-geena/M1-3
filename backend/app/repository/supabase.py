@@ -69,7 +69,7 @@ class SupabaseRepository(Repository):
         """최종검사 불량 유형별 수량·PPM (2026-11-07). 검사 구분(1차·2차·재검)별로 따로 — 화면 기본은 2차(본검사).
         PPM = 불량수량 / 검사수량 × 1e6. 분모·분자 모두 검사수량이 적힌 검사만(빈칸을 0 으로 치지 않음).
         불량명은 표시용으로만 묶는다(app.ingest.final_defect_names). 수량이 빈 불량 줄은 개수만 센다."""
-        from ..ingest.final_defect_names import standard_name
+        from ..ingest.final_defect_names import standard_name, group_of, NOT_IMEB3
         params: dict[str, Any] = {}
         if model:
             params["model_code"] = f"eq.{model}"
@@ -87,13 +87,18 @@ class SupabaseRepository(Repository):
                 a["runs_no_qty"] += 1
         defs: dict[str, dict] = {}
         null_q = 0
+        not_imeb3 = 0    # iMEB3 에 없는 불량(탈피·납조) — 다른 제품 칸을 읽은 것
         excluded = 0     # 검사수량이 없는 검사에 붙은 불량(막대 수량에는 넣고 PPM 분자에서는 뺀다)
         for r in rows:
             if r.get("quantity") is None:
                 null_q += 1
                 continue
             name = standard_name(r.get("defect_name"))
-            d = defs.setdefault(name, {"name": name, "originals": set(), "by": {}})
+            if name in NOT_IMEB3:
+                not_imeb3 += r["quantity"]
+                continue
+            g = group_of(name)
+            d = defs.setdefault(name, {"name": name, "group": g[1], "group_order": g[0], "originals": set(), "by": {}})
             d["originals"].add(r.get("defect_name"))
             b = d["by"].setdefault(r["model_code"], {}).setdefault(r["inspection_class"], {"qty": 0, "qty_ppm": 0})
             b["qty"] += r["quantity"]
@@ -107,7 +112,8 @@ class SupabaseRepository(Repository):
                 for c, b in by.items():
                     den = insp.get(m, {}).get(c, {}).get("qty") or 0
                     b["ppm"] = round(b["qty_ppm"] * 1e6 / den) if den else None
-        return {"inspected": insp, "defects": sorted(defs.values(), key=lambda d: -sum(b.get("2차", {}).get("qty", 0) for b in d["by"].values())),
+        return {"inspected": insp, "not_imeb3_qty": not_imeb3,
+                "defects": sorted(defs.values(), key=lambda d: (d["group_order"], -sum(b.get("2차", {}).get("qty", 0) for b in d["by"].values()))),
                 "null_qty_findings": null_q, "qty_without_inspected": excluded, "from": date_from, "to": date_to, "model": model}
 
     def inspection_breakdown(self, model: str | None, date_from: str | None, date_to: str | None) -> dict:
