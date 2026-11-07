@@ -7,16 +7,19 @@
   const NOM = { x: 2.1, y: 12.0 }, SPEC = 0.35, CTRL = 0.40;
   let prev = null;
   const judge = (x, y) => { if (x == null || y == null) return null; const dx = x - NOM.x, dy = y - NOM.y, v = Math.max(2 * Math.abs(dx), 2 * Math.abs(dy), 2 * Math.hypot(dx, dy)); return { xy: 2 * Math.hypot(dx, dy), st: v <= SPEC ? '정상' : v <= CTRL ? '경계' : '불량' } };
+  // 새 양식(X·Y 없이 위치도 값만, 2026-11-07): 위치도 값 하나로 판정
+  const judgeP = p => p == null ? null : { xy: p, st: p <= SPEC ? '정상' : p <= CTRL ? '경계' : '불량' };
+  const judgeRow = (r, sd) => sd === 'L' ? (r.lx != null ? judge(+r.lx, r.ly == null ? null : +r.ly) : judgeP(r.lpos == null ? null : +r.lpos)) : (r.rx != null ? judge(+r.rx, r.ry == null ? null : +r.ry) : judgeP(r.rpos == null ? null : +r.rpos));
   const C = { 정상: 'ok', 경계: 'warn', 불량: 'err' };
 
   function blockSummary(b) {
     const n = { 정상: 0, 경계: 0, 불량: 0 }; let diff = 0, mx = 0;
-    for (const r of b.rows) for (const [x, y, s] of [[r.lx, r.ly, r.src_l], [r.rx, r.ry, r.src_r]]) {
-      const j = judge(x == null ? null : +x, y == null ? null : +y); if (!j) continue; n[j.st]++; mx = Math.max(mx, j.xy);
+    for (const r of b.rows) for (const [sd, s] of [['L', r.src_l], ['R', r.src_r]]) {
+      const j = judgeRow(r, sd); if (!j) continue; n[j.st]++; mx = Math.max(mx, j.xy);
       if (s && s !== (j.st === '정상' ? 'OK' : 'NG')) diff++;
     }
     const bad = [];
-    for (const r of b.rows) for (const [sd, x, y] of [['좌', r.lx, r.ly], ['우', r.rx, r.ry]]) { const j = judge(x == null ? null : +x, y == null ? null : +y); if (j && j.st !== '정상') bad.push({ sd, no: r.no, st: j.st, v: j.xy }) }
+    for (const r of b.rows) for (const [sd, k] of [['좌', 'L'], ['우', 'R']]) { const j = judgeRow(r, k); if (j && j.st !== '정상') bad.push({ sd, no: r.no, st: j.st, v: j.xy }) }
     return { n, diff, mx, bad };
   }
   function lotOf(b) { return b.date ? b.date.slice(2).replace(/-/g, '') + (b.shift || '?') + '1' : '?' }
@@ -28,7 +31,7 @@
       <table><tr><th><input type="checkbox" id="bp_all" style="width:auto"></th><th>모델</th><th>제목 날짜</th><th>BB LOT</th><th>캐비티</th><th>정상</th><th>경계</th><th>불량</th><th>최대 위치도</th><th>불량·경계 캐비티</th><th>원천과 다른 칸</th><th>특이사항</th><th>상태</th></tr>
       ${bs.map(b => { const s = blockSummary(b), ok = !b.problem && !b.copy_of; return `<tr${b.copy_of ? ' style="opacity:.6"' : ''}>
         <td>${b.problem ? '' : `<input type="checkbox" class="bp_blk" value="${e(b.key)}" ${ok && !b.exists ? 'checked' : ''} style="width:auto">`}</td>
-        <td><b>${e(b.model)}</b><br><small class="muted">${e(b.key)}</small></td><td>${e(b.label)}</td>
+        <td><b>${e(b.model)}</b><br><small class="muted">${e(b.key)}</small></td><td>${e(b.label)}${b.layout==='위치도만'?'<br><small class="warn">위치도만(X·Y 없음)</small>':''}</td>
         <td>${e(lotOf(b))}${b.shift ? '' : '<br><small class="warn">주/야 없음 → 그날 사출 1건일 때만 연결</small>'}</td><td>${b.rows.length}</td>
         <td class="ok">${s.n.정상}</td><td class="warn">${s.n.경계 || ''}</td><td class="err">${s.n.불량 || ''}</td><td>${s.mx.toFixed(3)}</td><td style="text-align:left;white-space:nowrap">${s.bad.length ? s.bad.map(x => `<span class="${C[x.st]}">${x.sd} ${String.fromCharCode(64 + x.no)}</span>`).join(' ') : '<span class="muted">—</span>'}</td><td class="${s.diff ? 'err' : 'muted'}">${s.diff || '—'}</td>
         <td><input class="bp_note" data-key="${e(b.key)}" maxlength="500" placeholder="선택" style="width:140px"></td>

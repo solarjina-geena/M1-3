@@ -6,6 +6,10 @@
 - 그 아래 16줄: 캐비티 NO, 좌 X·Y·위치도·판정, 우 X·Y·위치도·판정
 - 값 없는 양식 블록(위치도 칸이 24.36 NG)은 건너뛴다. 같은 모델에 값이 완전히 같은 블록은 '복사본'으로 표시(저장 기본 해제).
 주/야: ㈜·(주 = D, (야 = N, 표시 없음 = None(DB 가 그날 사출 실행이 1건일 때만 연결).
+
+새 양식(2026-10 말~, 팀장 확인 2026-11-07): X·Y 없이 캐비티 NO · 좌 XY위치도 · 판정 · 우 XY위치도 · 판정 4칸.
+제목 왼쪽 칸(10월: '10.27' 숫자, 표시 형식 0.00) 또는 오른쪽 칸(11월: '11.02')에 연도 없는 월.일 → 같은 파일의 연도(없으면 올해).
+한 파일·한 시트에 두 양식이 섞여 있어도 블록마다 머리 줄('XY위치도' 유무)로 구분한다. 위치도 값은 그대로 저장(lpos/rpos).
 """
 from __future__ import annotations
 
@@ -17,6 +21,7 @@ import openpyxl
 
 _TITLE = re.compile(r"iMEB3\s*(IV|OV|0V|HSV)\b", re.I)
 _DATE = re.compile(r"(\d{2})\.(\d{1,2})\.(\d{1,2})")
+_MD = re.compile(r"(?<![\d.])(\d{1,2})\.(\d{2})(?![\d.])")   # 연도 없는 월.일(새 양식)
 
 
 def _num(v):
@@ -35,26 +40,83 @@ def _fmt(v):
     return s[:-2] if s.endswith(".0") else s
 
 
+def _date_text(v) -> str:
+    """날짜 칸 → 글자. 숫자로 든 월.일(10.2 = 10월 20일, 표시 형식 0.00)은 소수 둘째 자리까지."""
+    if isinstance(v, bool) or v is None:
+        return ""
+    if isinstance(v, (int, float)):
+        return f"{float(v):.2f}"
+    return str(v)
+
+
+def _parse_date(text: str, year: int) -> str | None:
+    dm = _DATE.search(text)
+    if dm:
+        y, mo, d = 2000 + int(dm.group(1)), int(dm.group(2)), int(dm.group(3))
+    else:
+        mm = _MD.search(text)
+        if not mm:
+            return None
+        y, mo, d = year, int(mm.group(1)), int(mm.group(2))
+    if not (1 <= mo <= 12 and 1 <= d <= 31):
+        return None
+    return f"{y}-{mo:02d}-{d:02d}"
+
+
 def _blocks_from_grid(sheet: str, rows: list[list]) -> list[dict]:
-    """격자(엑셀 시트 또는 붙여넣은 표)에서 제목 칸을 찾아 블록을 읽는다."""
+    """격자(엑셀 시트 또는 붙여넣은 표)에서 제목 칸을 찾아 블록을 읽는다. 예전 양식(X·Y)과 새 양식(XY위치도만)을 블록마다 구분."""
+    import datetime as _dt
+    years = [2000 + int(m.group(1)) for r in rows for v in r if isinstance(v, str) for m in [_DATE.search(v)] if m]
+    year = years[0] if years else _dt.date.today().year
     out = []
     for i, r in enumerate(rows):
         for j, v in enumerate(r):
             if not (isinstance(v, str) and _TITLE.search(v)):
                 continue
             model = _TITLE.search(v).group(1).upper().replace("0V", "OV")
-            dcell = next((str(x) for x in r[j + 1:j + 10] if x is not None and _DATE.search(str(x))), "")
-            dm = _DATE.search(dcell)
-            date = f"20{dm.group(1)}-{int(dm.group(2)):02d}-{int(dm.group(3)):02d}" if dm else None
+            # 날짜: 오른쪽(다음 제목 전까지) → 없으면 바로 왼쪽 칸
+            right = []
+            for x in r[j + 1:j + 10]:
+                if isinstance(x, str) and _TITLE.search(x):
+                    break
+                if x is not None:
+                    right.append(_date_text(x))
+            cands = [t for t in right if _DATE.search(t) or _MD.search(t)] + ([_date_text(r[j - 1])] if j > 0 else [])
+            dcell = next((t for t in cands if _parse_date(t, year)), "")
+            date = _parse_date(dcell, year) if dcell else None
             shift = "D" if ("㈜" in dcell or "(주" in dcell) else "N" if "(야" in dcell else None
-            spec = [str(x) if x is not None else "" for x in (rows[i + 3][j + 1:j + 4] if i + 3 < len(rows) else [])]
-            pts = _points(rows[i + 4:i + 20], j)
+            hdr = [str(x) if x is not None else "" for x in (rows[i + 2] if i + 2 < len(rows) else [])]
+            pos_cols = [k for k in range(max(0, j - 1), min(len(hdr), j + 8)) if "XY위치도" in hdr[k].replace(" ", "")]
+            if len(pos_cols) >= 2:   # 새 양식: NO 칸은 첫 위치도 칸 바로 왼쪽
+                pts = _points_pos(rows[i + 4:i + 20], pos_cols[0] - 1, pos_cols[0], pos_cols[1])
+                spec = [str(rows[i + 3][pos_cols[0]] or "")] if i + 3 < len(rows) and pos_cols[0] < len(rows[i + 3]) else []
+                layout = "위치도만"
+            else:
+                spec = [str(x) if x is not None else "" for x in (rows[i + 3][j + 1:j + 4] if i + 3 < len(rows) else [])]
+                pts = _points(rows[i + 4:i + 20], j)
+                layout = "X·Y"
             if not pts:
                 continue   # 빈 양식
             cell = f"{openpyxl.utils.get_column_letter(j + 1)}{i + 1}"
             out.append({"key": f"{sheet}!{cell}", "sheet": sheet, "cell": cell, "model": model, "label": dcell.strip()[:30],
-                        "date": date, "shift": shift, "spec": spec, "rows": pts, "problem": None if date else "제목 줄에서 날짜를 못 읽음"})
+                        "date": date, "shift": shift, "spec": spec, "rows": pts, "layout": layout,
+                        "problem": None if date else "제목 줄에서 날짜를 못 읽음"})
     return out
+
+
+def _points_pos(rows: list[list], n: int, lc: int, rc: int) -> list[dict]:
+    """새 양식 행: NO · 좌 위치도 · 판정 · 우 위치도 · 판정. 위치도 값이 둘 다 비면(빈 양식) 건너뜀."""
+    pts = []
+    for rr in rows:
+        rr = list(rr) + [None] * 12
+        no = _num(rr[n]) if n >= 0 else None
+        lp, rp = _num(rr[lc]), _num(rr[rc])
+        if no is None or not float(no).is_integer() or not 1 <= no <= 32 or (lp is None and rp is None):
+            continue
+        pts.append({"no": int(no), "lx": None, "ly": None, "rx": None, "ry": None,
+                    "lpos": _fmt(lp) if lp is not None else None, "rpos": _fmt(rp) if rp is not None else None,
+                    "src_l": str(rr[lc + 1] or "").strip().upper() or None, "src_r": str(rr[rc + 1] or "").strip().upper() or None})
+    return pts
 
 
 def _points(rows: list[list], j: int) -> list[dict]:
@@ -74,7 +136,7 @@ def _points(rows: list[list], j: int) -> list[dict]:
 def _mark(blocks: list[dict]) -> None:
     seen: dict[tuple, str] = {}
     for b in blocks:
-        sig = (b["model"], tuple((p["no"], p["lx"], p["ly"], p["rx"], p["ry"]) for p in b["rows"]))
+        sig = (b["model"], tuple((p["no"], p["lx"], p["ly"], p["rx"], p["ry"], p.get("lpos"), p.get("rpos")) for p in b["rows"]))
         b["copy_of"] = seen.get(sig)
         seen.setdefault(sig, b["key"])
     cnt: dict[tuple, int] = {}
@@ -92,7 +154,12 @@ def read_text(text: str, model: str | None, date: str | None, shift: str | None)
     rows = [[(c.strip() or None) for c in r] for r in rows]
     blocks = _blocks_from_grid("붙여넣기", rows)
     if not blocks:
-        pts = _points(rows, 0)
+        hdr = next((r for r in rows if sum("XY위치도" in str(c or "").replace(" ", "") for c in r) >= 2), None)
+        if hdr:
+            pc = [k for k, c in enumerate(hdr) if "XY위치도" in str(c or "").replace(" ", "")]
+            pts = _points_pos(rows, pc[0] - 1, pc[0], pc[1])
+        else:
+            pts = _points(rows, 0)
         if pts:
             problem = None if (model and date) else "제목 줄이 없어 모델·측정일을 위에서 골라 주세요"
             label = f"{(date or '')[2:].replace('-', '.')}{'㈜' if shift == 'D' else '(야)' if shift == 'N' else ''}"
