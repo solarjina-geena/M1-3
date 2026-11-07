@@ -246,7 +246,7 @@ def journal_preview(payload: JournalPayload):
 
 STAGE_LABEL = {"IMEB3_INJECTION": "사출", "IMEB3_STITCHING": "스티칭", "IMEB3_WINDING": "권선(BA)", "IMEB3_CA_PRESS": "압입(CA)",
                "IMEB3_FINAL_INSPECTION": "최종검사"}
-VIA_LABEL = {"journal_void": "작업일보 목록 삭제", "reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기", "injection": "사출조건 체크시트", "bobbin": "보빈 위치도 엑셀", "vision": "비전 가성불량 엑셀"}
+VIA_LABEL = {"journal_void": "작업일보 목록 삭제", "reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기", "injection": "사출조건 체크시트", "bobbin": "보빈 위치도 엑셀", "vision": "비전 가성불량 엑셀", "rework": "리워크 작업일보"}
 
 
 def _actor(who: dict) -> str:
@@ -781,6 +781,107 @@ def bobbin_position_save(body: BobbinSaveIn, authorization: Optional[str] = Head
         except Exception as e:
             out.append({"key": b["key"], "ok": False, "error": str(getattr(e, "detail", None) or e)[:300]})
     return {"saved": sum(1 for o in out if o["ok"]), "results": out}
+
+
+# ---------------------------------------------------------------- CA 리워크 작업일보(재마킹·비전 가성 양품 CA 투입) 2026-11-07
+@router.post("/rework/preview-image")
+async def rework_preview_image(file: UploadFile = File(...), page: Optional[int] = Query(None, ge=1, le=200), authorization: Optional[str] = Header(None)):
+    """리워크 작업일보 사진·PDF 한 쪽 → Claude 판독(칸 하나 = 리워크 1건). 저장 전 미리보기."""
+    who = _admin(authorization)
+    import time as _t
+    from ..ingest.rework_image import read_rework
+    t0 = _t.time()
+    data = await file.read()
+    name = file.filename or "image"
+    media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "pdf": "application/pdf"}.get(name.lower().rsplit(".", 1)[-1])
+    if not media:
+        raise HTTPException(400, "jpg/png/webp/pdf 만 받습니다")
+    label = name
+    if media == "application/pdf":
+        import io
+        from pypdf import PdfReader, PdfWriter
+        reader = PdfReader(io.BytesIO(data)); n = len(reader.pages)
+        if n > 1 and page is None:
+            return {"file": name, "pdf_pages": n, "need_pages": True, "blocks": []}
+        if page is not None:
+            if page > n:
+                raise HTTPException(400, f"PDF 는 {n}쪽입니다")
+            w = PdfWriter(); w.add_page(reader.pages[page - 1]); buf = io.BytesIO(); w.write(buf); data = buf.getvalue(); label = f"{name} p{page}"
+    try:
+        out = await read_rework(data, media, name)
+    except Exception as e:
+        await asyncio.to_thread(_log_call, who, "REWORK", "VISION_LLM", data, label, media, t0, False, error=str(e))
+        if "credit balance is too low" in str(e):
+            raise HTTPException(402, "AI 판독 사용 잔액(Anthropic 크레딧)이 부족합니다. console.anthropic.com → Plans & Billing 에서 충전한 뒤 다시 판독하세요.")
+        raise HTTPException(502, f"판독 실패: {e}")
+    await asyncio.to_thread(_log_call, who, "REWORK", "VISION_LLM", data, label, media, t0, True, usage=out.get("usage"), items=len(out["blocks"]))
+    have = {(e["model_code"], e["work_date"], e.get("part"), str(e.get("serial_start_num") or "")) for e in _repo().rework_entries()}
+    for b in out["blocks"]:
+        b["exists"] = (b["model"], b["work_date"], b["part"], b.get("serial_start") or "") in have
+        b.setdefault("source", {}).update({"file": name, "page": page or 1})
+    out["file"] = name
+    return out
+
+
+class ReworkSaveIn(BaseModel):
+    blocks: list[dict]
+    replace: bool = False
+
+
+@router.post("/rework")
+def rework_save(body: ReworkSaveIn, authorization: Optional[str] = Header(None)):
+    """고친 리워크 칸들을 저장(칸마다 리워크 1건 + CA 리워크 작업 실행 + 진성 불량). 화면이 고친 값을 다시 계산해 넣는다."""
+    who = _admin(authorization)
+    from ..ingest.rework_image import _findings, _int
+    from ..ingest.journal_payload import mask_person
+    from ..ingest.reinspection_image import resolve_mark
+    out = []
+    for b in body.blocks[:30]:
+        try:
+            if b.get("model") not in ("IV", "OV", "HSV") or b.get("part") not in ("WELD", "ASSEMBLY") or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(b.get("work_date") or "")):
+                raise ValueError("모델·구분·날짜를 확인하세요")
+            for k in ("total_qty", "true_qty", "false_qty", "input_qty"):
+                b[k] = _int(b.get(k))
+            b["mark"] = (str(b.get("mark") or "").strip().upper()) or None
+            m = resolve_mark(b["mark"], b["work_date"]) if b["mark"] else {}
+            b["mark_date"] = m.get("lot_date")
+            b["findings"] = _findings(b)
+            p = {k: b.get(k) for k in ("model", "part", "work_date", "total_qty", "true_qty", "false_qty", "input_qty", "mark", "mark_date",
+                                         "serial_start", "serial_end", "rows", "check", "findings")}
+            p["workers_masked"] = [mask_person(str(w)) if "*" not in str(w) else w for w in (b.get("workers_masked") or []) if w]
+            p["raw_note"] = (b.get("raw") or "") + (" · " + b["note"] if b.get("note") else "") or None
+            p["source"] = {**(b.get("source") or {}), "entered_via": "manage.html 리워크 작업일보", "human_edits": b.get("human_edits") or []}
+            p["replace"] = body.replace
+            p["actor"] = _actor(who)
+            part_ko = "용접부" if b["part"] == "WELD" else "조립부"
+            p["reason"] = _reason("IMEB3_CA_PRESS", "rework", f"{b['model']} {b['work_date']} {part_ko} 리워크 총 {b.get('total_qty')} · 진성 {b.get('true_qty')} · 가성 {b.get('false_qty')}"
+                                  f" · S/N {b.get('mark') or ''} {b.get('serial_start') or ''}~{b.get('serial_end') or ''}" + (" (기존 기록 바꾸기)" if body.replace else ""))
+            r = _repo().rework_save(p)
+            out.append({"key": b.get("key"), **(r or {})})
+        except Exception as e:
+            out.append({"key": b.get("key"), "ok": False, "error": str(getattr(e, "detail", None) or e)[:300]})
+    return {"saved": sum(1 for o in out if o.get("ok")), "results": out}
+
+
+@router.get("/rework-entries")
+def rework_entries(authorization: Optional[str] = Header(None)):
+    _admin(authorization)
+    return _wrap(_repo().rework_entries)
+
+
+class ReworkVoidIn(BaseModel):
+    rework_id: str
+    note: str
+
+
+@router.post("/rework/void")
+def rework_void(body: ReworkVoidIn, authorization: Optional[str] = Header(None)):
+    who = _admin(authorization)
+    note = body.note.strip()
+    if not 5 <= len(note) <= 300 or _PII.search(note):
+        raise HTTPException(400, "삭제 사유는 5~300자, 이메일·전화번호 형태 금지")
+    return _wrap(_repo().rework_void, {"rework_id": body.rework_id, "note": note, "actor": _actor(who),
+                                       "reason": _reason("IMEB3_CA_PRESS", "rework", f"리워크 삭제(VOID) · {note}")})
 
 
 # ---------------------------------------------------------------- 권선 비전 가성불량 조치 엑셀(재검사: 진성·가성) 2026-11-07
