@@ -192,7 +192,7 @@ def _known_workers_hint(kind: str | None) -> str:
     if not hit[1]:
         return ""
     return ("\n이 공정에서 이미 일한 작업자(가운데 글자를 가린 이름): " + ", ".join(hit[1][:40]) +
-            ". 작업자는 잘 바뀌지 않으니, 흘려 쓴 이름은 성·끝 글자가 맞는 이 중 사람으로 읽습니다. 확실히 다른 사람이면 적힌 그대로 읽습니다.")
+            ". 작업자는 잘 바뀌지 않으니, 흘려 쓴 이름은 성·끝 글자가 맞는 이 중 사람으로 판단합니다. 다만 이 목록은 가운데 글자를 가린 것이므로 inspector_raw · workers_raw · 재검 inspector_raw 에는 * 를 쓰지 말고 사진에 적힌 이름 전체(가운데 글자 포함)를 그대로 적습니다(서버가 저장할 때 가립니다). 확실히 다른 사람이면 적힌 그대로 읽습니다.")
 
 
 async def extract_from_image(data: bytes, media_type: str, filename: str, kind: str | None = None) -> dict:
