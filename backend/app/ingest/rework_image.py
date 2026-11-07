@@ -18,7 +18,8 @@ from .image import _json_text, file_name_date
 from .journal_payload import mask_person
 from .reinspection_image import resolve_mark
 
-PROMPT = """이 이미지는 iMEB3 'CA 공정 리워크 작업일보'입니다. 날짜와, 모델(IV·OV·HSV) 라인마다 '용접부 리워크' 칸과 '조립부 리워크' 칸이 있습니다.
+PROMPT = """이 이미지는 iMEB3 '리워크 작업일보'입니다. 날짜와, 모델(IV·OV·HSV) 라인마다 '용접부 리워크' 칸과 '조립부 리워크' 칸이 있습니다.
+용접부 리워크 = 보빈아세이(BA) 상태 제품을 넣어 BA 에서 리워크한 기록(총불량 → 진성/가성 → 양품을 CA 공정에 투입), 조립부 리워크 = 그 제품이 압입(CA) 공정을 지나며 나온 불량 유형·수량.
 값이 하나라도 적힌 칸만 blocks 에 넣습니다(완전히 빈 칸은 넣지 않음). 숫자는 적힌 그대로, 못 읽으면 null 로 두고 uncertain_notes 에 적습니다.
 
 - 용접부 리워크(part = "WELD"): total_qty=총불량수량, true_qty=진성불량 수량, true_types=진성불량 칸 옆에 손글씨로 적힌 유형과 수량
@@ -114,6 +115,13 @@ def normalize(raw: dict, filename: str) -> dict:
         x["check"] = " · ".join(checks) or None
         x["findings"] = _findings(x)
         blocks.append(x)
+    # 시작 투입수량(양식에 칸이 없어 기본값을 넣고 화면에서 고친다, 팀장 2026-11-07): 용접부 = 총불량수량, 조립부 = 같은 모델 용접부의 CA 투입수량
+    for x in blocks:
+        if x["part"] == "WELD":
+            x["start_qty"] = x["total_qty"]
+        else:
+            w = next((y for y in blocks if y["part"] == "WELD" and y["model"] == x["model"]), None)
+            x["start_qty"] = w["input_qty"] if w else None
     notes = [str(n) for n in raw.get("uncertain_notes") or []]
     for n in names:
         notes = [s.replace(n, mask_person(n)) for s in notes]

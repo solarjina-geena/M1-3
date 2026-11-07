@@ -840,20 +840,20 @@ def rework_save(body: ReworkSaveIn, authorization: Optional[str] = Header(None))
         try:
             if b.get("model") not in ("IV", "OV", "HSV") or b.get("part") not in ("WELD", "ASSEMBLY") or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(b.get("work_date") or "")):
                 raise ValueError("모델·구분·날짜를 확인하세요")
-            for k in ("total_qty", "true_qty", "false_qty", "input_qty"):
+            for k in ("total_qty", "true_qty", "false_qty", "input_qty", "start_qty"):
                 b[k] = _int(b.get(k))
             b["mark"] = (str(b.get("mark") or "").strip().upper()) or None
             m = resolve_mark(b["mark"], b["work_date"]) if b["mark"] else {}
             b["mark_date"] = m.get("lot_date")
             b["findings"] = _findings(b)
-            p = {k: b.get(k) for k in ("model", "part", "work_date", "total_qty", "true_qty", "false_qty", "input_qty", "mark", "mark_date",
+            p = {k: b.get(k) for k in ("model", "part", "work_date", "start_qty", "total_qty", "true_qty", "false_qty", "input_qty", "mark", "mark_date",
                                          "serial_start", "serial_end", "rows", "check", "findings")}
             p["workers_masked"] = [mask_person(str(w)) if "*" not in str(w) else w for w in (b.get("workers_masked") or []) if w]
             p["raw_note"] = (b.get("raw") or "") + (" · " + b["note"] if b.get("note") else "") or None
             p["source"] = {**(b.get("source") or {}), "entered_via": "manage.html 리워크 작업일보", "human_edits": b.get("human_edits") or []}
             p["replace"] = body.replace
             p["actor"] = _actor(who)
-            part_ko = "용접부" if b["part"] == "WELD" else "조립부"
+            part_ko = "용접부(BA 리워크)" if b["part"] == "WELD" else "조립부(CA 압입 결과)"
             p["reason"] = _reason("IMEB3_CA_PRESS", "rework", f"{b['model']} {b['work_date']} {part_ko} 리워크 총 {b.get('total_qty')} · 진성 {b.get('true_qty')} · 가성 {b.get('false_qty')}"
                                   f" · S/N {b.get('mark') or ''} {b.get('serial_start') or ''}~{b.get('serial_end') or ''}" + (" (기존 기록 바꾸기)" if body.replace else ""))
             r = _repo().rework_save(p)
@@ -866,7 +866,7 @@ def rework_save(body: ReworkSaveIn, authorization: Optional[str] = Header(None))
 @router.get("/rework")
 def rework_public(date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
     """대시보드용 리워크(공개 읽기): 작업자·원문 메모는 빼고 S/N 범위·수량·CA LOT·진성 유형만."""
-    keep = ("rework_id", "model_code", "work_date", "part", "part_ko", "mark", "marked_lot_date", "serial_start_raw", "serial_end_raw",
+    keep = ("rework_id", "model_code", "work_date", "part", "part_ko", "mark", "marked_lot_date", "serial_start_raw", "serial_end_raw", "start_qty", "completed_qty", "to_ca_qty",
             "serial_start_num", "serial_end_num", "serial_count", "total_qty", "input_qty", "true_qty", "false_qty", "true_types", "ca_lot_code", "check_note")
     rows = [{k: r.get(k) for k in keep} for r in _repo().rework_entries()]
     return [r for r in rows if (not date_from or (r["work_date"] or "") >= date_from) and (not date_to or (r["work_date"] or "") <= date_to)]
