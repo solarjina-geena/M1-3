@@ -33,6 +33,7 @@
     o[last] = val;
   }
 
+  const ASM_SIB = k => { const n = (typeof siblings === 'function') ? siblings(k).length : 0; return n ? '<div class="je-sib muted" style="margin:2px 0 4px">작업자·비고는 같은 장의 짝 줄(권선 BA·압입 CA)에도 같이 반영됩니다</div>' : '' };
   function editorHtml(k, p) {
     const fin = p.process === 'IMEB3_FINAL_INSPECTION';
     const list = (name, title, rows, cols, add) => `<div class="je-list"><b>${title}</b>${rows.map((r, i) => `<div class="je-row">${cols(r, `${name}.${i}`)}<button class="ghost small" type="button" data-je-del="${name}.${i}">빼기</button></div>`).join('') || '<div class="muted">없음</div>'}<button class="ghost small" type="button" data-je-add="${name}">＋ ${add}</button></div>`;
@@ -48,7 +49,7 @@
         ${fin ? `<label>차수 <select data-cls="1">${[['FIRST', '1차검사 (훈련·신입·지원, 합계 제외)'], ['MAIN', '본검사 (2차, 합계)'], ['RE', '재검사 (불량 이슈 재선별, 따로 집계)']].map(([v, t]) => `<option value="${v}" ${clsOf(p) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label>검사자 <small class="muted">(저장 시 가림)</small> ${inp('inspector_raw', p.inspector_raw, '', '110px')}</label>${clsOf(p) === 'RE' ? `<label>검사 내용(특이사항) ${inp('inspection_content', p.inspection_content, '현미경 검사 / 와이어 데미지 / 리드핀 찍힘', '200px')}</label>` : ''}` : ''}
       </div>
       <label class="je-wide">수량 원문 ${inp('raw_quantity_text', p.raw_quantity_text, '', '100%')}</label>
-      <label class="je-wide">비고 원문 ${inp('remarks_raw', p.remarks_raw, '', '100%')}</label>
+      <label class="je-wide">비고 원문 ${inp('remarks_raw', p.remarks_raw, '', '100%')}</label>${ASM_SIB(k)}
       ${fin && !p.lots.length ? `<div class="warn" style="margin:6px 0">일보에 LOT 기록이 없습니다 — 그대로 저장하면 <b>(LOT 기록 누락)</b> 줄로 남고 '확인 필요'에 올라갑니다. 나중에 CA LOT 을 넣으면 연결됩니다.${p.inspection_type === 'REINSPECTION' ? ' 재검은 최종검사 검사량 합계에 넣지 않고 따로 집계됩니다.' : ''}</div>` : ''}
       ${fin ? list('lots', '검사 LOT (마킹=BOX)', p.lots, (r, b) => `${inp(b + '.raw', r.raw, 'ZH4=2BOX', '130px')} 마킹 ${inp(b + '.marking_code', r.marking_code, 'ZH4', '70px')} BOX ${inp(b + '.boxes', r.boxes, '', '60px', 'number')}`, '검사 LOT')
         : list('inputs', '투입 LOT (상위 공정) ★사슬', p.inputs, (r, b) => `<select data-p="${b}.process">${procOpts(r.process)}</select> ${sel(b + '.component', r.component, [['', '—'], ['BOBBIN', '보빈'], ['INSERT', '인서트']])} 날짜 ${inp(b + '.lot_date', r.lot_date, '2026-09-03', '120px')} 원문 ${inp(b + '.raw', r.raw, '9.3', '110px')}`, '투입 LOT')
@@ -81,6 +82,30 @@
     tr.after(row);
   }
   function redraw(k) { const tr = document.querySelector(`tr[data-i="${k}"]`), nx = tr?.nextElementSibling; if (nx && nx.classList.contains('je-tr')) { nx.remove(); open(k) } }
+  // (2026-11-07 팀장) 조립 일보 한 장 = 권선(BA)·압입(CA) 두 줄: 작업자·비고는 같은 장이므로 한 번만 고치면 짝 줄에도 같이 반영
+  const ASM = ['IMEB3_WINDING', 'IMEB3_CA_PRESS'];
+  const SHARED = /^(workers_raw|remarks_raw)(\.|$)/;
+  function siblings(k) {
+    const a = getItem(k)?.payload; if (!a || !ASM.includes(a.process)) return [];
+    const pg = a.source?.page, f = a.source?.file || a.source?.filename;
+    return (window.pendingItems || []).map((it, j) => [it, j]).filter(([it, j]) => j !== k && it && it.ok && it.payload && ASM.includes(it.payload.process)
+      && it.payload.process !== a.process && it.payload.work_date === a.work_date && it.payload.model === a.model
+      && String(it.payload.source?.page ?? '') === String(pg ?? '') && String(it.payload.source?.file || it.payload.source?.filename || '') === String(f || '')).map(([, j]) => j);
+  }
+  function syncShared(k) {
+    const src = getItem(k).payload, sibs = siblings(k); if (!sibs.length) return 0;
+    for (const j of sibs) {
+      const it = getItem(j), p = it.payload;
+      const bw = JSON.stringify(p.workers_raw || []), br = p.remarks_raw;
+      p.workers_raw = JSON.parse(JSON.stringify(src.workers_raw || [])); p.remarks_raw = src.remarks_raw ?? null;
+      if (JSON.stringify(p.workers_raw) !== bw) track(it, 'workers_raw(같은 장 반영)', bw);
+      if ((p.remarks_raw ?? null) !== (br ?? null)) track(it, 'remarks_raw', br);
+      const st = document.querySelector(`tr[data-i="${j}"] .st-cell`); if (st && !st.dataset.edited) { st.dataset.edited = '1'; st.insertAdjacentHTML('beforeend', '<br><small class="warn">수정됨(같은 장 반영)</small>') }
+      redraw(j);
+    }
+    const note = document.querySelector(`.je[data-k="${k}"] .je-sib`); if (note) note.textContent = `작업자·비고는 같은 장의 ${sibs.map(j => getItem(j).payload.process === 'IMEB3_WINDING' ? '권선(BA)' : '압입(CA)').join('·')} 줄에도 같이 반영됩니다`;
+    return sibs.length;
+  }
 
   document.addEventListener('input', ev => {
     const t = ev.target, box = t.closest && t.closest('.je'); if (!box) return;
@@ -96,6 +121,7 @@
     const before = getPath(it.payload, t.dataset.p);
     setPath(it.payload, t.dataset.p, t.value);
     track(it, t.dataset.p, before);
+    if (SHARED.test(t.dataset.p)) syncShared(k);
     if (t.dataset.p === 'inspection_type') { if (t.value === 'REINSPECTION' && !it.payload.inspection_round) it.payload.inspection_round = 2; redraw(k); }
     t.style.background = flag(t.value) ? 'var(--flag-bg)' : 'var(--ok-bg)'; t.style.borderColor = flag(t.value) ? '#e7ad00' : '#5cb85c';
     const st = document.querySelector(`tr[data-i="${k}"] .st-cell`); if (st && !st.dataset.edited) { st.dataset.edited = '1'; st.insertAdjacentHTML('beforeend', '<br><small class="warn">수정됨(저장 전)</small>') }
@@ -105,8 +131,8 @@
     const t = ev.target; if (!t.dataset) return;
     if (t.dataset.ed != null) { open(+t.dataset.ed); return }
     const box = t.closest && t.closest('.je'); if (!box) return; const k = +box.dataset.k, p = getItem(k).payload;
-    if (t.dataset.jeAdd) { const blank = { inputs: { process: null, component: null, lot_date: null, raw: null }, materials: { material: 'IMEB3_RESIN', lot_date: null, raw: null, qty: null, unit: null, spindle: null }, defects: { name: '', qty: null, raw: null }, lots: { raw: '', marking_code: null, boxes: null }, workers_raw: { name: '', role: null } }[t.dataset.jeAdd]; p[t.dataset.jeAdd].push(blank); track(getItem(k), t.dataset.jeAdd + '.' + (p[t.dataset.jeAdd].length - 1) + '(추가)', null); redraw(k); return }
-    if (t.dataset.jeDel) { const [name, i] = t.dataset.jeDel.split('.'); const gone = JSON.stringify(p[name][+i] || {}).slice(0, 180); p[name].splice(+i, 1); const it = getItem(k); it._orig = it._orig || {}; it._orig[name + '.' + i + '(빼기)'] = gone; (p.source = p.source || {}).human_edits = [...(p.source.human_edits || []), { path: name + '.' + i + '(빼기)', ai: gone, value: null }]; it.edited = p.source.human_edits.length; window.journalEditCount && window.journalEditCount(); redraw(k); return }
+    if (t.dataset.jeAdd) { const blank = { inputs: { process: null, component: null, lot_date: null, raw: null }, materials: { material: 'IMEB3_RESIN', lot_date: null, raw: null, qty: null, unit: null, spindle: null }, defects: { name: '', qty: null, raw: null }, lots: { raw: '', marking_code: null, boxes: null }, workers_raw: { name: '', role: null } }[t.dataset.jeAdd]; p[t.dataset.jeAdd].push(blank); track(getItem(k), t.dataset.jeAdd + '.' + (p[t.dataset.jeAdd].length - 1) + '(추가)', null); if (t.dataset.jeAdd === 'workers_raw') syncShared(k); redraw(k); return }
+    if (t.dataset.jeDel) { const [name, i] = t.dataset.jeDel.split('.'); const gone = JSON.stringify(p[name][+i] || {}).slice(0, 180); p[name].splice(+i, 1); const it = getItem(k); it._orig = it._orig || {}; it._orig[name + '.' + i + '(빼기)'] = gone; (p.source = p.source || {}).human_edits = [...(p.source.human_edits || []), { path: name + '.' + i + '(빼기)', ai: gone, value: null }]; it.edited = p.source.human_edits.length; window.journalEditCount && window.journalEditCount(); if (name === 'workers_raw') syncShared(k); redraw(k); return }
     if (t.dataset.jeClose != null) { summary(k); const tr = document.querySelector(`tr[data-i="${k}"]`), nx = tr?.nextElementSibling; if (nx && nx.classList.contains('je-tr')) nx.remove(); if (tr) { tr.scrollIntoView({ block: 'center', behavior: 'smooth' }); tr.style.transition = 'background .8s'; tr.style.background = '#eaf7ea'; setTimeout(() => tr.style.background = '', 1200) } }
   });
   const css = document.createElement('style');
