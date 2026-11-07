@@ -1208,6 +1208,13 @@ def reinspection_save(body: ReinspectionIn, authorization: Optional[str] = Heade
         raw = str(src.pop("inspector_raw")).strip(); mk = mask_person(raw)
         src["inspector_masked"] = mk
         p["raw_note"] = (p.get("raw_note") or "").replace(raw, mk or "")
+    # (2026-11-07) 고친 칸 기록(human_edits)의 검사자 이름도 가린다 — 고치기 전·후 값 모두
+    from ..ingest.journal_payload import mask_person as _mp
+    for ed in (src.get("human_edits") or []):
+        if isinstance(ed, dict) and "inspector" in str(ed.get("path") or ""):
+            for k in ("ai", "value"):
+                if ed.get(k):
+                    ed[k] = _mp(str(ed[k]))
     p["actor"] = _actor(who)
     nd = sum(f.qty or 0 for f in body.findings)
     p["reason"] = _reason("IMEB3_FINAL_INSPECTION", "reinspection",
