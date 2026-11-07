@@ -62,6 +62,8 @@ _ALIAS = {
     "내경파손": "내경파손", "innerborebreak": "내경파손",
     "미압입": "미압입", "notinserted": "미압입", "missingpress": "미압입", "비압입": "미압입",
     "납조": "납조불량", "탈피": "탈피불량",
+    "lowercasepress": "미압입",      # lower case press = 미압입(팀장 2026-11-07)
+    "misinsert": "Lead Pin 휨",        # misinsert = 핀 휨(팀장 2026-11-07)
 }
 
 
