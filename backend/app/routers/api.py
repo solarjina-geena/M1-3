@@ -741,7 +741,7 @@ def bobbin_position_save(body: BobbinSaveIn, authorization: Optional[str] = Head
         if note and _PII.search(note):
             out.append({"key": b["key"], "ok": False, "error": "특이사항에 이메일·전화번호 형태 금지"}); continue
         p = {"model": b["model"], "check_date": b["date"], "shift": b["shift"], "label": b["label"], "replace": body.replace, "note": note or None,
-             "rows": [{k: r[k] for k in ("no", "lx", "ly", "rx", "ry")} for r in b["rows"]],
+             "rows": [{k: r.get(k) for k in ("no", "lx", "ly", "rx", "ry", "lpos", "rpos")} for r in b["rows"]],   # lpos/rpos = 새 양식 위치도 값(2026-11-07 빠져서 측정 0개로 저장되던 것 수정)
              "source": {"file": res["file"], "sha256": res["sha256"], "sheet": b["sheet"], "cell": b["cell"], "entered_via": "manage.html 보빈 위치도"},
              "actor": _actor(who),
              "reason": _reason("IMEB3_INJECTION", "bobbin", f"보빈 초품 위치도 {b['model']} {b['date']} {b['shift'] or '주야 미기재'} 캐비티 {len(b['rows'])}개"
