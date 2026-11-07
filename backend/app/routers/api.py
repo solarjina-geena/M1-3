@@ -443,7 +443,7 @@ async def journal_preview_image(request: Request, file: UploadFile = File(...), 
                     it["ok"] = False
                     it["error"] = f"{pl.get('model') or ''} 검사자·검사량이 없어 작업일보가 아닌 것으로 봄(LOT·BOX 집계표 등){' · ' + str(page) + '쪽' if page else ''} — 저장 안 함"
             out["items"] = _mark_existing(out.get("items") or [])
-            _flag_new_workers(out["items"])
+            # (2026-11-07 팀장) 새 작업자 표시는 화면이 깨져 끔 — _flag_new_workers 는 남겨 둠
             out["reinspections"] = await asyncio.to_thread(_enrich_reinsp, out.get("reinspections") or [])
             await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, label, media, t0, True,
                                     usage=out.get("usage"), items=len(out.get("items") or []))
