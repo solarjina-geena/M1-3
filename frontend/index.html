@@ -165,6 +165,8 @@ main>.agent{
 .graph-help p{margin:5px 0}
 .graph-help .trace-status{text-align:left;font-size:11px}
 @media(max-width:700px){.genealogy-card .dashboard-actions{width:100%;justify-content:flex-start}.genealogy-card .manage-shortcut{margin:0}}
+/* (2026-11-07) 윈도우 글자 크기 150%(화면 폭 1,280 근처)에서 공정 단추 줄이 잘리지 않게: 단추가 폭에 맞춰 줄어듦 */
+@media (max-width:1400px) and (min-width:1051px){.step{min-width:0;padding:6px 8px}.step b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.step small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 </style><script src="auth-store.js"></script>
 </head><body>
 <div class="app">
