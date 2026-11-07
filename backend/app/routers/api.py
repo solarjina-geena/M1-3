@@ -990,10 +990,25 @@ def reinspection_save(body: ReinspectionIn, authorization: Optional[str] = Heade
     if not 1 <= len(body.lots) <= 30 or any((x.box_count or 0) < 0 or (x.qty_ea or 0) < 0 for x in body.lots):
         raise HTTPException(400, "대상 LOT 은 1~30줄, BOX·수량은 0 이상")
     p = body.model_dump()
+    # 최종검사 목록의 '재검사' 줄(2026-11-07): CA LOT·날짜 없이 마킹코드만 오면 조견표로 CA 제품 LOT 날짜를 정한다(못 읽은 글자 → 미연결, 추정 안 함)
+    from ..ingest.reinspection_image import resolve_mark
+    for l in p["lots"]:
+        if not (l.get("lot_code") or "").strip() and not l.get("lot_date") and l.get("lot_code_raw"):
+            m = resolve_mark(l["lot_code_raw"], body.inspection_date)
+            if m.get("lot_code"):
+                l["lot_code"] = m["lot_code"]; l["prior_run_id"] = "ALL" if l.get("prior_run_id") in (None, "", "NONE") else l["prior_run_id"]
+            elif m.get("lot_date"):
+                l["lot_date"] = m["lot_date"]
+    src = p.get("source") or {}
+    if src.get("inspector_raw"):   # 실명은 저장하지 않는다: 가린 이름으로 바꾸고 비고 문구 안의 실명도 바꾼다
+        from ..ingest.journal_payload import mask_person
+        raw = str(src.pop("inspector_raw")).strip(); mk = mask_person(raw)
+        src["inspector_masked"] = mk
+        p["raw_note"] = (p.get("raw_note") or "").replace(raw, mk or "")
     p["actor"] = _actor(who)
     nd = sum(f.qty or 0 for f in body.findings)
     p["reason"] = _reason("IMEB3_FINAL_INSPECTION", "reinspection",
-                          f"재검사 {body.model} {body.inspection_date} LOT {', '.join(x.lot_code for x in body.lots[:5])}{' 외 ' + str(len(body.lots) - 5) if len(body.lots) > 5 else ''}"
+                          f"재검사 {body.model} {body.inspection_date} LOT {', '.join((x.lot_code or x.lot_code_raw or '?') for x in body.lots[:5])}{' 외 ' + str(len(body.lots) - 5) if len(body.lots) > 5 else ''}"
                           f" · 불량 {nd}EA" + (" (기존 기록 바꾸기)" if body.replace else ""))
     return _wrap(_repo().reinspection_save, p)
 

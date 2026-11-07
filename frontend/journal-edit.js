@@ -45,7 +45,7 @@
         <label>순번 ${inp('sequence', p.sequence, '1', '60px', 'number')}</label>
         <label>${fin ? '검사량' : '생산량'} ${inp('gross_output_qty', p.gross_output_qty, '', '110px', 'number')}</label>
         <label>작업시간(분) ${inp('work_minutes', p.work_minutes, '', '90px', 'number')}</label>
-        ${fin ? `<label>차수 <select data-cls="1">${[['FIRST', '1차검사 (훈련·신입·지원, 합계 제외)'], ['MAIN', '본검사 (2차, 합계)'], ['RE', '재검사 (불량 이슈 재선별, 따로 집계)']].map(([v, t]) => `<option value="${v}" ${clsOf(p) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label>검사자 <small class="muted">(저장 시 가림)</small> ${inp('inspector_raw', p.inspector_raw, '', '110px')}</label>` : ''}
+        ${fin ? `<label>차수 <select data-cls="1">${[['FIRST', '1차검사 (훈련·신입·지원, 합계 제외)'], ['MAIN', '본검사 (2차, 합계)'], ['RE', '재검사 (불량 이슈 재선별, 따로 집계)']].map(([v, t]) => `<option value="${v}" ${clsOf(p) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label>검사자 <small class="muted">(저장 시 가림)</small> ${inp('inspector_raw', p.inspector_raw, '', '110px')}</label>${clsOf(p) === 'RE' ? `<label>검사 내용(특이사항) ${inp('inspection_content', p.inspection_content, '현미경 검사 / 와이어 데미지 / 리드핀 찍힘', '200px')}</label>` : ''}` : ''}
       </div>
       <label class="je-wide">수량 원문 ${inp('raw_quantity_text', p.raw_quantity_text, '', '100%')}</label>
       <label class="je-wide">비고 원문 ${inp('remarks_raw', p.remarks_raw, '', '100%')}</label>
@@ -87,7 +87,7 @@
     if (t.dataset.cls) {
       const k = +box.dataset.k, it = getItem(k); if (!it) return; const p = it.payload, bt = p.inspection_type, br = p.inspection_round;
       p.inspection_type = t.value === 'RE' ? 'REINSPECTION' : 'FINAL'; p.inspection_round = t.value === 'FIRST' ? 1 : 2;
-      track(it, 'inspection_type', bt); track(it, 'inspection_round', br); t.style.background = '#eaf7ea';
+      track(it, 'inspection_type', bt); track(it, 'inspection_round', br); t.style.background = '#eaf7ea'; redraw(k);
       const st = document.querySelector(`tr[data-i="${k}"] .st-cell`); if (st && !st.dataset.edited) { st.dataset.edited = '1'; st.insertAdjacentHTML('beforeend', '<br><small class="warn">수정됨(저장 전)</small>') }
       return;
     }
