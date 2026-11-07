@@ -423,8 +423,9 @@ function renderVisionDefects(){
  const mkSvg=(w,h)=>{const svg=document.createElementNS(NS,'svg');svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.style.cssText=`display:block;width:${w}px;height:${h}px;min-height:0;max-height:none`;
   const el=(t,a,txt)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;svg.append(e);return e};
   const tip=(e,s)=>{const t=document.createElementNS(NS,'title');t.textContent=s;e.append(t);return e};return {svg,el,tip}};
- const head=(title,empty)=>{const h=document.createElement('div');h.className='vis-h';h.textContent=title;box.append(h);if(empty){const p=document.createElement('p');p.className='fd-note';p.textContent='표시 구간에 자료가 없습니다.';box.append(p);return false}return true};
- const put=svg=>{const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);box.append(sc)};
+ let tgt=box,Wc=W;
+ const head=(title,empty)=>{const h=document.createElement('div');h.className='vis-h';h.textContent=title;tgt.append(h);if(empty){const p=document.createElement('p');p.className='fd-note';p.textContent='표시 구간에 자료가 없습니다.';tgt.append(p);return false}return true};
+ const put=svg=>{const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);tgt.append(sc)};
  // 가로 막대: groups=[{label, sub, by:{m:{v, v2, text, tip}}}] — v2 가 있으면 v(진하게)+v2(연하게) 이어 붙임, sub = 이름 아래 작은 글씨
  const chartH=(title,groups,mods)=>{if(!head(title,!groups.length))return;
   const rowH=Math.max(mods.length*(BH+G),30)+RG,H=groups.length*rowH+14,maxV=Math.max(1,...groups.flatMap(g=>mods.map(m=>(g.by[m]?.v||0)+(g.by[m]?.v2||0)))),X=v=>(W-LW-RW)*v/maxV;
@@ -440,7 +441,7 @@ function renderVisionDefects(){
   el('line',{x1:LW,x2:LW,y1:2,y2:H-4,stroke:'#9ca3af'});put(svg)};
  // 세로 막대(비교용, visOrient='v'): 가로축 = 묶음, 묶음 안 모델 막대, 막대 위 숫자, 아래 이름·작은 글씨
  const chartV=(title,groups,mods)=>{if(!head(title,!groups.length))return;
-  const H=300,T=26,B=220,L=48,gw=Math.max(120,Math.min(220,(W-L-20)/groups.length)),w=Math.max(W,L+groups.length*gw+20),bw=Math.min(34,(gw-24)/Math.max(1,mods.length)),
+  const H=300,T=26,B=220,L=48,gw=Math.max(110,Math.min(220,(Wc-L-20)/groups.length)),w=Math.max(Wc,L+groups.length*gw+20),bw=Math.min(34,(gw-24)/Math.max(1,mods.length)),
         maxV=Math.max(1,...groups.flatMap(g=>mods.map(m=>(g.by[m]?.v||0)+(g.by[m]?.v2||0)))),Y=v=>(B-T)*v/maxV;
   const {svg,el,tip}=mkSvg(w,H);
   for(let k=0;k<=4;k++){const y=B-(B-T)*k/4;el('line',{x1:L,x2:w-10,y1:y,y2:y,stroke:'#eef0f2'});el('text',{x:L-6,y:y+4,'text-anchor':'end','font-size':10,fill:'#6b7280'},fmt(Math.round(maxV*k/4)))}
@@ -454,12 +455,16 @@ function renderVisionDefects(){
   el('line',{x1:L,x2:w-10,y1:B,y2:B,stroke:'#9ca3af'});put(svg)};
  const chart=(window.visOrient==='v')?chartV:chartH;
  const modsOf=list=>models.filter(m=>list.some(r=>r.model===m));
+ /* (2026-11-07 팀장) 세로 막대일 때 ①·② 를 한 줄에 좌우로 — 화면이 좁으면 위아래 */
+ const pair=window.visOrient==='v'&&W>=720;let c2=null;if(pair){const row=document.createElement('div');row.style.cssText='display:flex;gap:16px;align-items:flex-start';const c1=document.createElement('div');c2=document.createElement('div');c1.style.cssText=c2.style.cssText='flex:1 1 0;min-width:0';row.append(c1,c2);box.append(row);tgt=c1;Wc=Math.floor((W-16)/2)}
  // ① 작업일보 비전 1·2·3차 — 차수마다 거르는 불량 내용을 이름 아래에
  const rm=modsOf(rej);
  chart('① 비전 차수별 불량 수량 — 작업일보(설비가 걸러낸 수량)',[1,2,3].map(k=>({label:`비전 ${k}차`,sub:STAGE_TXT[k],by:Object.fromEntries(rm.map(m=>{const q=rej.filter(r=>r.model===m&&r.stage===k).reduce((a,r)=>a+r.qty,0);return [m,q?{v:q,text:`${fmt(q)} EA`,short:fmt(q),tip:`${m} 비전 ${k}차(${STAGE_TXT[k]}) ${fmt(q)} EA (${new Set(rej.filter(r=>r.model===m&&r.stage===k).map(r=>r.date)).size}일)`}:null]}))})).filter(g=>rm.some(m=>g.by[m])),rm);
+ if(pair)tgt=c2;
  // ② 다시 본 결과: 진성(진하게) + 가성(연하게)
  const cm=modsOf(chk);
  chart('② 다시 본 결과 — 진성(진한 막대) + 가성(연한 막대), 가성불량 조치 엑셀',[1,2].map(k=>({label:`비전 ${k}차 재검사`,sub:STAGE_TXT[k],by:Object.fromEntries(cm.map(m=>{const cc=chk.filter(r=>r.model===m&&r.round===k),ins=cc.reduce((a,r)=>a+r.inspected,0),t=cc.reduce((a,r)=>a+r.true,0),f=cc.reduce((a,r)=>a+r.false,0);return [m,cc.length?{v:t,v2:f,text:`검사 ${fmt(ins)} · 진성 ${fmt(t)} · 가성 ${fmt(f)} (가성 ${pct(f,t+f)})`,short:`${fmt(t)}/${fmt(t+f)}`,tip:`${m} 비전 ${k}차 재검사 ${cc.length}건 · 검사 ${fmt(ins)} · 진성 ${fmt(t)} · 가성 ${fmt(f)} (가성 ${pct(f,t+f)})`}:null]}))})).filter(g=>cm.some(m=>g.by[m])),cm);
+ tgt=box;Wc=W;
  // ③ 진성 불량 유형별 — 어느 차수 재검사에서 나왔는지(소속) 함께
  const types={};for(const r of chk)for(const [n,q] of Object.entries(r.types)){const a=((types[n]=types[n]||{})[r.model]=types[n][r.model]||{q:0,r:{}});a.q+=q;a.r[r.round]=(a.r[r.round]||0)+q}
  const tot=by=>Object.values(by).reduce((x,y)=>x+y.q,0),rsum=by=>{const o={};for(const a of Object.values(by))for(const [k,v] of Object.entries(a.r))o[k]=(o[k]||0)+v;return o};
