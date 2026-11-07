@@ -66,8 +66,8 @@
     cell(1, e(p.model)); cell(2, e(PROC[p.process] || p.process));
     cell(4, e(p.gross_output_qty ?? '—'), p.gross_output_qty);
     cell(5, (p.inputs || []).map(x => e((PROC[x.process] || x.process || '') + ' ' + (x.lot_date || x.raw || ''))).join('<br>'), (p.inputs || []).map(x => x.raw + ' ' + x.lot_date).join(' '));
-    cell(6, (p.materials || []).map(m => e((MATS[m.material] || m.material) + ' ' + (m.lot_date || m.raw || ''))).join('<br>'), (p.materials || []).map(m => m.raw).join(' '));
-    cell(7, (p.defects || []).map(d => `<span style="white-space:nowrap">${e(d.name + ' ' + (d.qty ?? d.raw ?? ''))}</span>`).join('<br>'), (p.defects || []).map(d => d.raw).join(' '));
+    cell(6, window.matCell ? window.matCell((p.materials || []).map(m => (MATS[m.material] || m.material) + ' ' + (m.lot_date || m.raw || ''))) : (p.materials || []).map(m => e((MATS[m.material] || m.material) + ' ' + (m.lot_date || m.raw || ''))).join('<br>'), (p.materials || []).map(m => m.raw).join(' '));
+    cell(7, window.defCell ? window.defCell(p.defects || []) : (p.defects || []).map(d => `<span style="white-space:nowrap">${e(d.name + ' ' + (d.qty ?? d.raw ?? ''))}</span>`).join('<br>'), (p.defects || []).map(d => d.raw).join(' '));
     cell(8, (p.lots || []).map(l => e(l.raw)).join('<br>'), (p.lots || []).map(l => l.raw).join(' '));
     const fw = tr.querySelector('.fin-who'); if (fw) fw.innerHTML = window.finWhoHtml ? window.finWhoHtml(p) : e(p.inspector_raw || '—');
   }
