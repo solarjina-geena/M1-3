@@ -967,6 +967,12 @@ def inspection_breakdown(model: Optional[str] = None, date_from: Optional[str] =
     return _wrap(_repo().inspection_breakdown, model if model in ("IV", "OV", "HSV") else None, date_from or None, date_to or None)
 
 
+@router.get("/final-defects")
+def final_defects(model: Optional[str] = None, date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
+    """최종검사 불량 유형별 수량·PPM(불량수량/검사수량×1e6), 검사 구분(1차·2차·재검)별. 대시보드 최종검사 '불량 유형' 화면."""
+    return _wrap(_repo().final_defects, model if model in ("IV", "OV", "HSV") else None, date_from or None, date_to or None)
+
+
 @router.get("/reinspections")
 def reinspections(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"), limit: int = Query(300, ge=1, le=2000)):
     return _wrap(_repo().reinspections, model, limit)
