@@ -158,6 +158,41 @@ def _reinspections(raw: dict, date: str | None, names: list[str]) -> list[dict]:
 KIND_KO = {"INJECTION": "사출", "STITCHING": "스티칭(BS)", "ASSEMBLY": "조립(BA 권선·CA 압입)", "FINAL_INSPECTION": "최종검사"}
 
 
+_KW_CACHE: dict = {}
+
+
+def _known_workers_hint(kind: str | None) -> str:
+    """작업자는 잘 안 바뀐다(팀장 2026-11-07): 그 공정에 이미 있는 작업자(가운데 글자 가린 표시명)를 힌트로 준다.
+    흘려 쓴 이름을 기존 사람 중에서 맞추도록 — 실명은 DB 에 없으므로 성·끝 글자로만 맞춘다. 목록에 없으면 적힌 그대로."""
+    import time
+    procs = {"INJECTION": ["IMEB3_INJECTION"], "STITCHING": ["IMEB3_STITCHING"], "ASSEMBLY": ["IMEB3_WINDING", "IMEB3_CA_PRESS"],
+             None: ["IMEB3_INJECTION", "IMEB3_WINDING", "IMEB3_CA_PRESS"], "FINAL_INSPECTION": ["FINAL"]}.get(kind)
+    if not procs:
+        return ""
+    key = ",".join(procs)
+    hit = _KW_CACHE.get(key)
+    if not hit or time.time() - hit[0] > 600:
+        try:
+            from ..repository.supabase import get_repository
+            c = get_repository().c
+            if procs == ["FINAL"]:
+                rows = c.select("m13_final_entries", {"select": "inspector"}, limit=5000)
+                from collections import Counter
+                cnt = Counter(r["inspector"] for r in rows if r.get("inspector"))
+                names = {n for n, k in cnt.items() if k >= 3}      # 한두 번만 나온 이름은 잘못 읽힌 것일 수 있어 뺀다
+            else:
+                rows = c.select("m13_worker_names_by_process", {"process_code": "in.(" + key + ")"}, limit=5000)
+                names = {r["worker_display_name"] for r in rows if r.get("worker_display_name")}
+        except Exception:
+            names = set()
+        hit = (time.time(), sorted(n for n in names if "*" in n))
+        _KW_CACHE[key] = hit
+    if not hit[1]:
+        return ""
+    return ("\n이 공정에서 이미 일한 작업자(가운데 글자를 가린 이름): " + ", ".join(hit[1][:40]) +
+            ". 작업자는 잘 바뀌지 않으니, 흘려 쓴 이름은 성·끝 글자가 맞는 이 중 사람으로 읽습니다. 확실히 다른 사람이면 적힌 그대로 읽습니다.")
+
+
 async def extract_from_image(data: bytes, media_type: str, filename: str, kind: str | None = None) -> dict:
     """kind = 관리 화면에서 고른 작업일보 탭(사출·BS·조립·최종검사). Claude 에 힌트로 주고, 읽은 종류와 다르면 경고."""
     hint = (f"\n\n사용자가 고른 작업일보 종류: {KIND_KO[kind]} ({kind}). 이 종류로 읽되, 사진이 실제로 다른 종류면 "
@@ -173,6 +208,7 @@ async def extract_from_image(data: bytes, media_type: str, filename: str, kind: 
                  "- 압입(CA): Upper Case 공급 / Bobbin Ass'y 공급 / Lower Case 흡입불량 / Lower Case 조립불량 / 깊이불량 / 내경 불량 / 내경압 불량 / "
                  "내전압 불량 / 저항불량 / 절연저항 불량 / 마킹 불량 / 콘텐 불량\n"
                  "작업자 이름은 근무 현황 칸에 적힌 그대로 읽습니다(같은 사람이 날마다 반복되는 경우가 많음).")
+    hint += _known_workers_hint(kind)
     if not settings.anthropic_key:
         raise RuntimeError("ANTHROPIC_API_KEY 가 backend/.env.personal 에 없습니다.")
     b64 = base64.standard_b64encode(data).decode("utf-8")
