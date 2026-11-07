@@ -12,8 +12,8 @@
       const out = document.getElementById('imgOut'); if (!out) return null;
       const card = out.closest('.card') || out.parentElement;
       b = document.createElement('div'); b.className = 'card'; b.id = 'jlistCard'; b.style.marginTop = '12px';
-      b.innerHTML = '<h3 id="jlistTitle">저장된 작업일보</h3><div class="sub">DB 에 저장된 기록입니다(새로고침해도 그대로). 최근 입력순 30건 · 기간으로 거르기 · <b>중복</b> = 같은 날·모델·공정·LOT 이 두 번 이상. 잘못 저장했으면 <b>삭제</b>(사유 필수, 하위 기록까지 함께 무효 처리). 수정은 같은 일보를 다시 판독해 고친 뒤 \'기존 기록 바꾸기\'로 저장하세요.</div><div id="jlist"></div>';
-      card.after(b); b = document.getElementById('jlist');
+      b.innerHTML = '<h3 style="display:flex;gap:10px;align-items:center"><span id="jlistTitle">저장된 작업일보</span><button class="ghost small" type="button" id="jlistReload">목록 새로고침</button></h3><div class="sub">DB 에 저장된 기록입니다(새로고침해도 그대로). 최근 입력순 30건 · 기간으로 거르기 · <b>중복</b> = 같은 날·모델·공정·LOT 이 두 번 이상. 잘못 저장했으면 <b>삭제</b>(사유 필수, 하위 기록까지 함께 무효 처리). 수정은 같은 일보를 다시 판독해 고친 뒤 \'기존 기록 바꾸기\'로 저장하세요.</div><div id="jlist"></div>';
+      card.after(b); document.getElementById('jlistReload').onclick = () => load(); b = document.getElementById('jlist');
     }
     return b;
   }

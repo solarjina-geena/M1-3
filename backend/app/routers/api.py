@@ -198,6 +198,30 @@ def auth_logout(authorization: Optional[str] = Header(None)):
     return {"ok": True}
 
 
+def _flag_new_workers(items: list[dict]) -> None:
+    """작업자 이름은 잘 안 바뀐다(팀장 2026-11-07): 판독한 이름(가린 형태)이 DB 작업자 목록에 없으면 '새 작업자?'와 기존 후보를 붙인다. 바꾸지는 않는다."""
+    try:
+        from ..ingest.journal_payload import mask_person
+        known = sorted({w["worker_display_name"] for w in _repo().c.select("worker", {"select": "worker_display_name", "record_state": "eq.ACTIVE"},
+                                                                           schema=settings.schema, limit=2000) if w.get("worker_display_name")})
+    except Exception:
+        return
+    for it in items:
+        pl = it.get("payload") if isinstance(it.get("payload"), dict) else None
+        if not it.get("ok") or not pl:
+            continue
+        names = [w.get("name") for w in (pl.get("workers_raw") or []) if isinstance(w, dict) and w.get("name")]
+        if pl.get("inspector_raw"):
+            names.append(pl["inspector_raw"])
+        new = []
+        for n in names:
+            m = mask_person(n)
+            if m and m not in known:
+                new.append({"name": n, "masked": m, "candidates": [k for k in known if k[:1] == m[:1]][:6]})
+        if new:
+            it["new_workers"] = new
+
+
 def _mark_existing(items: list[dict]) -> list[dict]:
     """미리보기 항목마다 '이미 저장된 일보인지' 표시(저장 시 '기존 기록 바꾸기'를 켜야 덮어씀)."""
     try:
@@ -418,6 +442,7 @@ async def journal_preview_image(request: Request, file: UploadFile = File(...), 
                     it["ok"] = False
                     it["error"] = f"{pl.get('model') or ''} 검사자·검사량이 없어 작업일보가 아닌 것으로 봄(LOT·BOX 집계표 등){' · ' + str(page) + '쪽' if page else ''} — 저장 안 함"
             out["items"] = _mark_existing(out.get("items") or [])
+            _flag_new_workers(out["items"])
             out["reinspections"] = await asyncio.to_thread(_enrich_reinsp, out.get("reinspections") or [])
             await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, label, media, t0, True,
                                     usage=out.get("usage"), items=len(out.get("items") or []))

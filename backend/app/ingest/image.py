@@ -162,6 +162,13 @@ async def extract_from_image(data: bytes, media_type: str, filename: str, kind: 
     """kind = 관리 화면에서 고른 작업일보 탭(사출·BS·조립·최종검사). Claude 에 힌트로 주고, 읽은 종류와 다르면 경고."""
     hint = (f"\n\n사용자가 고른 작업일보 종류: {KIND_KO[kind]} ({kind}). 이 종류로 읽되, 사진이 실제로 다른 종류면 "
             "document_type 은 사진 그대로 적고 uncertain_notes 에 그 사실을 씁니다.") if kind in KIND_KO else ""
+    if kind == "ASSEMBLY":
+        # 조립 일보의 불량 항목 줄은 양식에 인쇄된 고정 이름(팀장 확인 2026-11-07) — 같은 불량이 여러 표기로 쌓이지 않게 이 표기 그대로
+        hint += ("\n조립 일보 불량 이름은 양식에 인쇄된 줄 이름을 아래 표기 그대로 씁니다(띄어쓰기·괄호 포함). 목록에 없는 손글씨 추가 항목만 적힌 그대로.\n"
+                 "- 권선(BA): 용접 불량 / 비전1차(미용접,이탈,여선) / 비전2차(권선정열,Post파손) / 비전3차(와이어데미지) / Wire 끊어짐 / Set up 불량\n"
+                 "- 압입(CA): Upper Case 공급 / Bobbin Ass'y 공급 / Lower Case 흡입불량 / Lower Case 조립불량 / 깊이불량 / 내경 불량 / 내경압 불량 / "
+                 "내전압 불량 / 저항불량 / 절연저항 불량 / 마킹 불량 / 콘텐 불량\n"
+                 "작업자 이름은 근무 현황 칸에 적힌 그대로 읽습니다(같은 사람이 날마다 반복되는 경우가 많음).")
     if not settings.anthropic_key:
         raise RuntimeError("ANTHROPIC_API_KEY 가 backend/.env.personal 에 없습니다.")
     b64 = base64.standard_b64encode(data).decode("utf-8")
