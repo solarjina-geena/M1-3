@@ -301,7 +301,7 @@ function renderFinalDefects(){
  const LIMIT=20,more=Math.max(0,types.length-LIMIT);
  types=[...types].sort((a,b)=>tq(b)-tq(a)).slice(0,LIMIT).sort((a,b)=>(a.group_order??5)-(b.group_order??5)||tq(b)-tq(a));
  // 가로·세로 전환(브라우저에 기억)
- if(!window.finOrient){try{window.finOrient=localStorage.getItem('m13finOrient')||'h'}catch(_){window.finOrient='h'}}
+ if(!window.finOrient){try{window.finOrient=localStorage.getItem('m13finOrient')||'v'}catch(_){window.finOrient='v'}/* (2026-11-07 팀장) 기본 세로 */}
  {const tg=document.createElement('div');tg.className='pos-switch fd-toggle';for(const [v,t] of [['h','가로 막대'],['v','세로 막대']]){const b=document.createElement('button');b.type='button';b.textContent=t;b.className=window.finOrient===v?'on':'';b.onclick=()=>{window.finOrient=v;try{localStorage.setItem('m13finOrient',v)}catch(_){}drawCurrentGraph()};tg.append(b)}box.append(tg)}
  const NS='http://www.w3.org/2000/svg',maxV=Math.max(1,...types.flatMap(d=>models.map(m=>val(d,m))));
  const mk=(w,h)=>{const svg=document.createElementNS(NS,'svg');svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.style.cssText=`display:block;width:${w}px;height:${h}px;min-height:0;max-height:none`;return svg};
