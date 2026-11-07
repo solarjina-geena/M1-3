@@ -3,9 +3,9 @@
 // 수정 = 같은 일보를 다시 판독해 '고치기' 후 '기존 기록 바꾸기'로 저장(이전 기록은 VOID). 탭을 바꾸면 그 탭의 판독 화면과 목록으로 바뀐다.
 (() => {
   const e = v => (typeof esc === 'function' ? esc(v) : String(v ?? ''));
-  const PROC = { INJECTION: 'IMEB3_INJECTION', STITCHING: 'IMEB3_STITCHING', ASSEMBLY: 'IMEB3_WINDING,IMEB3_CA_PRESS' };
+  const PROC = { INJECTION: 'IMEB3_INJECTION', STITCHING: 'IMEB3_STITCHING', ASSEMBLY: 'IMEB3_WINDING,IMEB3_CA_PRESS', MIXED: 'IMEB3_INJECTION,IMEB3_WINDING,IMEB3_CA_PRESS' };
   const PN = { IMEB3_INJECTION: '사출', IMEB3_STITCHING: '스티칭(BS)', IMEB3_WINDING: '권선(BA)', IMEB3_CA_PRESS: '압입(CA)' };
-  const KO = { INJECTION: '사출', STITCHING: 'BS', ASSEMBLY: '조립(BA·CA)', FINAL_INSPECTION: '최종검사 본검사' };
+  const KO = { INJECTION: '사출', STITCHING: 'BS', ASSEMBLY: '조립(BA·CA)', MIXED: '사출·조립', FINAL_INSPECTION: '최종검사 본검사' };
   function box() {
     let b = document.getElementById('jlist');
     if (!b) {
