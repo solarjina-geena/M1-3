@@ -863,6 +863,15 @@ def rework_save(body: ReworkSaveIn, authorization: Optional[str] = Header(None))
     return {"saved": sum(1 for o in out if o.get("ok")), "results": out}
 
 
+@router.get("/rework")
+def rework_public(date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
+    """대시보드용 리워크(공개 읽기): 작업자·원문 메모는 빼고 S/N 범위·수량·CA LOT·진성 유형만."""
+    keep = ("rework_id", "model_code", "work_date", "part", "part_ko", "mark", "marked_lot_date", "serial_start_raw", "serial_end_raw",
+            "serial_start_num", "serial_end_num", "serial_count", "total_qty", "input_qty", "true_qty", "false_qty", "true_types", "ca_lot_code", "check_note")
+    rows = [{k: r.get(k) for k in keep} for r in _repo().rework_entries()]
+    return [r for r in rows if (not date_from or (r["work_date"] or "") >= date_from) and (not date_to or (r["work_date"] or "") <= date_to)]
+
+
 @router.get("/rework-entries")
 def rework_entries(authorization: Optional[str] = Header(None)):
     _admin(authorization)
