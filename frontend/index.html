@@ -289,10 +289,10 @@ function renderFinalDefects(){
  // 모델별 요약
  const sum=document.createElement('div');sum.className='fd-sum';
  for(const m of models){const i=insp(m),dq=finDefData.defects.reduce((a,d)=>a+(d.by[m]?.[CLS]?.qty_ppm||0),0),ppm=i.qty?Math.round(dq*1e6/i.qty):null;
-  const c=document.createElement('div');c.className='fd-card';c.style.borderLeftColor=COL[m];c.innerHTML=`<b style="color:${m==='OV'?'#8a6400':COL[m]}">${m}</b> 검사 ${fmt(i.qty)} EA · 불량 ${fmt(dq)} EA · <b>${ppm==null?'—':fmt(ppm)+' PPM'}</b><br><small>본검사 ${fmt(i.runs)}건${i.runs_no_qty?` (검사수량 빈칸 ${i.runs_no_qty}건 제외)`:''}</small>`;sum.append(c)}
+  const c=document.createElement('div');c.className='fd-card';c.style.borderLeftColor=COL[m];c.innerHTML=`<b style="color:${m==='OV'?'#8a6400':COL[m]}">${m}</b> 검사 ${fmt(i.qty)} EA · 불량 ${fmt(dq)} EA <b>(${ppm==null?'—':fmt(ppm)+' PPM'})</b><br><small>본검사 ${fmt(i.runs)}건${i.runs_no_qty?` (검사수량 빈칸 ${i.runs_no_qty}건 제외)`:''}</small>`;sum.append(c)}
  // 수량 / PPM 전환
- const tg=document.createElement('div');tg.className='pos-switch fd-toggle';for(const [v,t] of [['qty','불량 수량'],['ppm','PPM']]){const b=document.createElement('button');b.type='button';b.textContent=t;b.className=finMetric===v?'on':'';b.onclick=()=>{finMetric=v;drawCurrentGraph()};tg.append(b)}
- box.append(sum,tg);
+ /* (2026-11-07 팀장) 수량/PPM 전환 단추 없앰 — 막대 = 불량 수량, 숫자 = 수량 (PPM) */finMetric='qty';
+ box.append(sum);
  const val=(d,m)=>{const b=d.by[m]?.[CLS];if(!b)return 0;return finMetric==='ppm'?(b.ppm||0):b.qty};
  let types=finDefData.defects.filter(d=>models.some(m=>(d.by[m]?.[CLS]?.qty||0)>0));
  types.sort((a,b)=>models.reduce((s,m)=>s+val(b,m),0)-models.reduce((s,m)=>s+val(a,m),0));
@@ -305,7 +305,7 @@ function renderFinalDefects(){
   const lb=el('text',{x:LW-8,y:y0+(models.length*(BH+G))/2+4,'text-anchor':'end','font-size':12,'font-weight':600,fill:'#1f2937'},d.name);const tt=document.createElementNS(NS,'title');tt.textContent='원문 표기: '+(d.originals||[]).join(', ');lb.append(tt);
   models.forEach((m,j)=>{const b=d.by[m]?.[CLS],y=y0+j*(BH+G),v=val(d,m);
    const r=el('rect',{x:LW,y,width:Math.max(v>0?2:0,X(v)-LW),height:BH,rx:2,fill:COL[m]});const t2=document.createElementNS(NS,'title');t2.textContent=`${m} ${d.name}: ${b?fmt(b.qty)+' EA · '+(b.ppm==null?'PPM 계산 불가(검사수량 없음)':fmt(b.ppm)+' PPM'):'0'}`;r.append(t2);
-   if(b&&b.qty)el('text',{x:X(v)+5,y:y+BH-2,'font-size':11,fill:'#374151'},finMetric==='ppm'?`${b.ppm==null?'—':fmt(b.ppm)} PPM (${fmt(b.qty)})`:`${fmt(b.qty)} · ${b.ppm==null?'—':fmt(b.ppm)+' PPM'}`)});
+   if(b&&b.qty)el('text',{x:X(v)+5,y:y+BH-2,'font-size':11,fill:'#374151'},`${fmt(b.qty)} (${b.ppm==null?'PPM 계산 불가':fmt(b.ppm)+' PPM'})`)});
   el('line',{x1:LW,x2:W-RW,y1:y0+rowH-RG/2,y2:y0+rowH-RG/2,stroke:'#eef0f2'})});
  el('line',{x1:LW,x2:LW,y1:4,y2:H-16,stroke:'#9ca3af'});
  const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);box.append(sc);
