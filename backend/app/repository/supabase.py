@@ -40,6 +40,31 @@ class SupabaseRepository(Repository):
             info["db"] = f"error: {e}"
         return info
 
+    def vision_summary(self, model: str | None, date_from: str | None, date_to: str | None) -> dict:
+        """권선 비전 불량(2026-11-07): 작업일보 비전 1·2·3차 불량(설비가 걸러낸 수량) + 재검사 엑셀(사람이 다시 본 결과: 가성/진성·유형)."""
+        p1: dict[str, Any] = {}
+        p2: dict[str, Any] = {}
+        if model:
+            p1["model_code"] = p2["model_code"] = f"eq.{model}"
+        _date_filter(p1, "work_date", date_from, date_to)
+        _date_filter(p2, "check_date", date_from, date_to)
+        rejects = self.c.select("m13_vision_reject_daily", p1, limit=100000)
+        rows = self.c.select("m13_vision_check_rows", p2, limit=100000)
+        runs: dict[str, dict] = {}
+        for r in rows:
+            a = runs.setdefault(r["run_id"], {"model": r["model_code"], "date": r["check_date"], "round": r["round"],
+                                               "inspected": r.get("inspected_qty_ea") or 0, "false": 0, "true": 0, "types": {},
+                                               "needs_review": r.get("validation_status") == "NEEDS_REVIEW", "linked": bool(r.get("linked_to_journal"))})
+            q = r.get("quantity") or 0
+            if r.get("finding_class") == "FALSE_REJECT":
+                a["false"] += q
+            elif r.get("finding_class") == "TRUE_DEFECT":
+                a["true"] += q
+                n = r.get("defect_name") or "유형 미기재"
+                a["types"][n] = a["types"].get(n, 0) + q
+        return {"rejects": [{"model": r["model_code"], "date": r["work_date"], "stage": r["stage"], "qty": r["qty"] or 0} for r in rejects],
+                "checks": sorted(runs.values(), key=lambda a: (a["date"], a["model"], a["round"]))}
+
     def final_defects(self, model: str | None, date_from: str | None, date_to: str | None) -> dict:
         """최종검사 불량 유형별 수량·PPM (2026-11-07). 검사 구분(1차·2차·재검)별로 따로 — 화면 기본은 2차(본검사).
         PPM = 불량수량 / 검사수량 × 1e6. 분모·분자 모두 검사수량이 적힌 검사만(빈칸을 0 으로 치지 않음).
