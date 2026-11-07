@@ -740,6 +740,20 @@ class SupabaseRepository(Repository):
         _date_filter(params, "check_date", date_from, date_to)
         return self.c.select("m13_bobbin_position_checks", params, limit=20000)
 
+    # ---------------------------------------------------------------- 권선 비전 재검사(가성불량 조치 엑셀) 2026-11-07
+    def vision_check_entries(self) -> list[dict]:
+        return self.c.select("m13_vision_check_entries", {"order": "recorded_at.desc"}, limit=5000)
+
+    def vision_check_save(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_vision_check_save", {"p": payload})
+
+    def vision_check_void(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_vision_check_void", {"p": payload})
+
     def bobbin_position_entries(self, model: str | None = None) -> list[dict]:
         params: dict[str, Any] = {"order": "recorded_at.desc"}
         if model:

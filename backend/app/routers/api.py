@@ -24,6 +24,7 @@ from ..db.supabase_client import SupabaseError
 from ..ingest import excel_csv
 from ..ingest import injection_sheet
 from ..ingest import bobbin_position
+from ..ingest import vision_check
 from ..ingest.image import extract_from_image
 from ..ingest.journal_payload import JournalPayload
 from ..repository.base import PROCESS_LABEL
@@ -245,7 +246,7 @@ def journal_preview(payload: JournalPayload):
 
 STAGE_LABEL = {"IMEB3_INJECTION": "사출", "IMEB3_STITCHING": "스티칭", "IMEB3_WINDING": "권선(BA)", "IMEB3_CA_PRESS": "압입(CA)",
                "IMEB3_FINAL_INSPECTION": "최종검사"}
-VIA_LABEL = {"journal_void": "작업일보 목록 삭제", "reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기", "injection": "사출조건 체크시트", "bobbin": "보빈 위치도 엑셀"}
+VIA_LABEL = {"journal_void": "작업일보 목록 삭제", "reinspection": "재검사 입력", "judgment": "판단 카드", "form": "직접 입력", "file": "엑셀·CSV", "image": "사진 OCR", "gaps": "사슬 보완", "confirm": "연결 확인", "position": "위치도 붙여넣기", "injection": "사출조건 체크시트", "bobbin": "보빈 위치도 엑셀", "vision": "비전 가성불량 엑셀"}
 
 
 def _actor(who: dict) -> str:
@@ -777,6 +778,108 @@ def bobbin_position_save(body: BobbinSaveIn, authorization: Optional[str] = Head
         except Exception as e:
             out.append({"key": b["key"], "ok": False, "error": str(getattr(e, "detail", None) or e)[:300]})
     return {"saved": sum(1 for o in out if o["ok"]), "results": out}
+
+
+# ---------------------------------------------------------------- 권선 비전 가성불량 조치 엑셀(재검사: 진성·가성) 2026-11-07
+_VIS_CACHE: dict[str, dict] = {}
+
+
+def _vis_mark(res: dict) -> dict:
+    have = {(e["model_code"], e["check_date"], e["round"], e["inspected_qty_ea"], e["true_qty"], e["false_qty"]) for e in _repo().vision_check_entries()}
+    for b in res["blocks"]:
+        if not b.get("problem"):
+            b["exists"] = (b["model"], b["date"], b["round"], b["inspected"], b["true"], b["false"]) in have
+    if len(_VIS_CACHE) > 6:
+        _VIS_CACHE.pop(next(iter(_VIS_CACHE)))
+    _VIS_CACHE[res["sha256"]] = res
+    return res
+
+
+@router.post("/vision-check/preview")
+async def vision_check_preview(file: UploadFile = File(...), year: int = Query(2026, ge=2020, le=2100), authorization: Optional[str] = Header(None)):
+    """비전 가성불량 조치 엑셀(.xls/.xlsx)을 읽어 블록(날짜·모델·1차/2차: 검사·진성·가성·진성 유형)을 돌려준다."""
+    who = _admin(authorization)
+    import time as _t
+    t0 = _t.time()
+    name = _fix_name(file.filename or "upload.xls")
+    if not name.lower().endswith((".xls", ".xlsx", ".xlsm")):
+        raise HTTPException(400, "xls·xlsx 파일만 받습니다")
+    data = await file.read()
+    if len(data) > INJ_MAX_BYTES:
+        raise HTTPException(400, "파일이 너무 큽니다(30MB 이하)")
+    try:
+        res = await asyncio.to_thread(vision_check.read_workbook, data, name, year)
+    except Exception as e:
+        raise HTTPException(400, f"엑셀을 읽지 못했습니다: {e}")
+    await asyncio.to_thread(_log_call, who, "VISION_CHECK", "EXCEL_PARSER", data, name, "application/vnd.ms-excel", t0, True,
+                            items=len(res["blocks"]), blocks=len(res["blocks"]))
+    return _vis_mark(res)
+
+
+class VisionTextIn(BaseModel):
+    text: str
+    year: int = 2026
+
+
+@router.post("/vision-check/preview-text")
+def vision_check_preview_text(body: VisionTextIn, authorization: Optional[str] = Header(None)):
+    """엑셀에서 블록('날짜: 10/1' 줄부터)을 복사해 붙여넣은 것."""
+    _admin(authorization)
+    if len(body.text) > 400_000:
+        raise HTTPException(400, "붙여넣은 내용이 너무 깁니다")
+    return _vis_mark(vision_check.read_text(body.text, body.year if 2020 <= body.year <= 2100 else 2026))
+
+
+class VisionSaveIn(BaseModel):
+    sha256: str
+    keys: list[str]
+    replace: bool = False
+
+
+@router.post("/vision-check")
+def vision_check_save(body: VisionSaveIn, authorization: Optional[str] = Header(None)):
+    """고른 블록을 비전 재검사 1건씩 저장(IN_PROCESS·VISION_n + 가성/진성). 같은 날·모델 권선 일보가 1건일 때만 FK."""
+    who = _admin(authorization)
+    res = _VIS_CACHE.get(body.sha256)
+    if not res:
+        raise HTTPException(409, "미리보기 결과가 없습니다(서버가 다시 시작됨). 다시 미리보기 해 주세요")
+    pick = [b for b in res["blocks"] if b["key"] in set(body.keys) and not b.get("problem")]
+    if not pick:
+        raise HTTPException(400, "저장할 블록이 없습니다")
+    out = []
+    for b in pick:
+        p = {k: b[k] for k in ("model", "date", "round", "inspected", "true", "false", "fs", "check")}
+        p.update({"replace": body.replace, "actor": _actor(who),
+                  "source": {"file": res["file"], "sha256": res["sha256"], "cell": b["cell"], "entered_via": "manage.html 비전 불량"},
+                  "reason": _reason("IMEB3_WINDING", "vision", f"비전 {b['round']}차 재검사 {b['model']} {b['date']} 검사 {b['inspected']} · 진성 {b['true']} · 가성 {b['false']}"
+                                      + (" (기존 기록 바꾸기)" if body.replace else ""))})
+        try:
+            r = _repo().vision_check_save(p)
+            out.append({"key": b["key"], **r})
+        except Exception as e:
+            out.append({"key": b["key"], "ok": False, "error": str(getattr(e, "detail", None) or e)[:300]})
+    return {"saved": sum(1 for o in out if o.get("ok")), "results": out}
+
+
+@router.get("/vision-check-entries")
+def vision_check_entries(authorization: Optional[str] = Header(None)):
+    _admin(authorization)
+    return _wrap(_repo().vision_check_entries)
+
+
+class VisionVoidIn(BaseModel):
+    run_id: str
+    note: str
+
+
+@router.post("/vision-check/void")
+def vision_check_void(body: VisionVoidIn, authorization: Optional[str] = Header(None)):
+    who = _admin(authorization)
+    note = body.note.strip()
+    if not 5 <= len(note) <= 300 or _PII.search(note):
+        raise HTTPException(400, "삭제 사유는 5~300자, 이메일·전화번호 형태 금지")
+    return _wrap(_repo().vision_check_void, {"run_id": body.run_id, "note": note, "actor": _actor(who),
+                                            "reason": _reason("IMEB3_WINDING", "vision", f"비전 재검사 삭제(VOID) · {note}")})
 
 
 @router.get("/bobbin-position-checks")
