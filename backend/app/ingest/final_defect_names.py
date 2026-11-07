@@ -55,6 +55,7 @@ _ALIAS = {
     "탈피": "탈피불량",
     "leadpin휨": "Lead Pin 휨", "leadpinbent": "Lead Pin 휨", "leadpinbend": "Lead Pin 휨",
     "leadpin찍힘": "Lead Pin 찍힘", "leadpin도금": "Lead Pin 도금", "pin도금": "Lead Pin 도금", "pin찍힘": "Lead Pin 찍힘",
+    "핀찍힘": "Lead Pin 찍힘", "핀휨": "Lead Pin 휨", "핀도금": "Lead Pin 도금",   # 핀 = 리드핀(재검 비고 표기, 팀장 2026-11-07)
     "leadpindent": "Lead Pin 찍힘", "pinnick": "Lead Pin 찍힘", "리드도금": "Lead Pin 도금",   # 핀 = 리드핀(같은 부품)
     "u/c찍힘": "U/C 찍힘", "uc찍힘": "U/C 찍힘", "uppercasenick": "U/C 찍힘", "uppercasedent": "U/C 찍힘",
     "lowercasenick": "L/C 찍힘", "lowercasedent": "L/C 찍힘", "lowercasedentmark": "L/C 찍힘", "u/c도금": "U/C 도금", "upper_case_plating": "U/C 도금", "uppercaseplating": "U/C 도금",
