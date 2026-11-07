@@ -840,13 +840,13 @@ def rework_save(body: ReworkSaveIn, authorization: Optional[str] = Header(None))
         try:
             if b.get("model") not in ("IV", "OV", "HSV") or b.get("part") not in ("WELD", "ASSEMBLY") or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(b.get("work_date") or "")):
                 raise ValueError("모델·구분·날짜를 확인하세요")
-            for k in ("total_qty", "true_qty", "false_qty", "input_qty", "start_qty"):
+            for k in ("total_qty", "true_qty", "false_qty", "input_qty", "start_qty", "first_qty"):
                 b[k] = _int(b.get(k))
             b["mark"] = (str(b.get("mark") or "").strip().upper()) or None
             m = resolve_mark(b["mark"], b["work_date"]) if b["mark"] else {}
             b["mark_date"] = m.get("lot_date")
             b["findings"] = _findings(b)
-            p = {k: b.get(k) for k in ("model", "part", "work_date", "start_qty", "total_qty", "true_qty", "false_qty", "input_qty", "mark", "mark_date",
+            p = {k: b.get(k) for k in ("model", "part", "work_date", "start_qty", "first_qty", "total_qty", "true_qty", "false_qty", "input_qty", "mark", "mark_date",
                                          "serial_start", "serial_end", "rows", "check", "findings")}
             p["workers_masked"] = [mask_person(str(w)) if "*" not in str(w) else w for w in (b.get("workers_masked") or []) if w]
             p["raw_note"] = (b.get("raw") or "") + (" · " + b["note"] if b.get("note") else "") or None
@@ -866,7 +866,7 @@ def rework_save(body: ReworkSaveIn, authorization: Optional[str] = Header(None))
 @router.get("/rework")
 def rework_public(date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
     """대시보드용 리워크(공개 읽기): 작업자·원문 메모는 빼고 S/N 범위·수량·CA LOT·진성 유형만."""
-    keep = ("rework_id", "model_code", "work_date", "part", "part_ko", "mark", "marked_lot_date", "serial_start_raw", "serial_end_raw", "start_qty", "completed_qty", "to_ca_qty",
+    keep = ("rework_id", "model_code", "work_date", "part", "part_ko", "mark", "marked_lot_date", "serial_start_raw", "serial_end_raw", "start_qty", "first_qty",
             "serial_start_num", "serial_end_num", "serial_count", "total_qty", "input_qty", "true_qty", "false_qty", "true_types", "ca_lot_code", "check_note")
     rows = [{k: r.get(k) for k in keep} for r in _repo().rework_entries()]
     return [r for r in rows if (not date_from or (r["work_date"] or "") >= date_from) and (not date_to or (r["work_date"] or "") <= date_to)]

@@ -24,10 +24,10 @@ PROMPT = """이 이미지는 iMEB3 '리워크 작업일보'입니다. 날짜와,
 
 - 용접부 리워크(part = "WELD"): total_qty=총불량수량, true_qty=진성불량 수량, true_types=진성불량 칸 옆에 손글씨로 적힌 유형과 수량
   (예: '권선불량 4' → [{"name":"권선불량","qty":4}], 'pin찍힘 9EA' → [{"name":"핀찍힘","qty":9}], 유형만 있고 수량이 없으면 qty=null),
-  false_qty=가성불량, input_qty=투입수량.
+  false_qty=가성불량 수(예: '11 + 초품 24EA' 면 false_qty=11, first_qty=24), first_qty=가성 칸에 함께 적힌 초품 등 추가 수량(없으면 null), input_qty=투입수량(리워크 투입 = 가성 + 초품 등).
 - 조립부 리워크(part = "ASSEMBLY"): rows = 유형 줄(저항·깊이·내경·마킹)마다 {"type": 유형, "qty": 수량, "true": 진성불량, "false": 가성불량} — 빈 줄은 빼기.
   total_qty/true_qty/false_qty = '총수량' 줄. 줄 옆 손글씨 메모는 note 에.
-- S/N 칸: 'ZJL 119875-119932' 같은 표기 → mark="ZJL"(영문·숫자 마킹코드 3글자), serial_start="119875", serial_end="119932". 마킹이 뒤에 붙어도 같음.
+- S/N 칸은 그 LOT 의 시리얼 범위입니다(1:1 매칭 아님, 수량보다 넓을 수 있음). 'ZJL 119875-119932' 같은 표기 → mark="ZJL"(영문·숫자 마킹코드 3글자), serial_start="119875", serial_end="119932". 마킹이 뒤에 붙어도 같음.
   끝 번호가 앞자리를 생략해 짧게 적혀 있으면 시작 번호 앞자리를 붙여 완성하고 uncertain_notes 에 적습니다.
 - 작업자(조립부 리워크 옆 '작업자:')는 workers 에 이름 그대로(서버가 가립니다). 이름을 note 등 다른 칸에 옮겨 적지 않습니다.
 - raw 에는 그 칸의 글자를 짧게 그대로 적습니다(이름 제외).
@@ -35,7 +35,7 @@ PROMPT = """이 이미지는 iMEB3 '리워크 작업일보'입니다. 날짜와,
 JSON 하나만 출력:
 {"work_date": "YYYY-MM-DD 또는 null", "workers": ["..."],
  "blocks": [{"model": "IV|OV|HSV", "part": "WELD|ASSEMBLY", "total_qty": 0, "true_qty": 0, "true_types": [{"name": "", "qty": 0}],
-             "false_qty": 0, "input_qty": 0, "rows": [{"type": "", "qty": 0, "true": 0, "false": 0}],
+             "false_qty": 0, "first_qty": null, "input_qty": 0, "rows": [{"type": "", "qty": 0, "true": 0, "false": 0}],
              "mark": "", "serial_start": "", "serial_end": "", "note": "", "raw": ""}],
  "uncertain_notes": ["..."]}"""
 
@@ -81,7 +81,7 @@ def normalize(raw: dict, filename: str) -> dict:
             continue
         x = {"key": f"b{k}", "model": b["model"], "part": b["part"], "work_date": date,
              "total_qty": _int(b.get("total_qty")), "true_qty": _int(b.get("true_qty")), "false_qty": _int(b.get("false_qty")),
-             "input_qty": _int(b.get("input_qty")),
+             "input_qty": _int(b.get("input_qty")), "first_qty": _int(b.get("first_qty")),
              "true_types": [{"name": t.get("name"), "qty": _int(t.get("qty"))} for t in (b.get("true_types") or []) if isinstance(t, dict)],
              "rows": [{"type": r.get("type"), "qty": _int(r.get("qty")), "true": _int(r.get("true")), "false": _int(r.get("false"))}
                       for r in (b.get("rows") or []) if isinstance(r, dict)],
@@ -104,24 +104,26 @@ def normalize(raw: dict, filename: str) -> dict:
         t, f = x["true_qty"] or 0, x["false_qty"] or 0
         if x["total_qty"] is not None and (t or f) and x["total_qty"] != t + f:
             checks.append(f"총 {x['total_qty']} ≠ 진성 {t} + 가성 {f}")
-        if x["part"] == "WELD" and x["input_qty"] is not None and f and x["input_qty"] != f:
-            checks.append(f"투입 {x['input_qty']} ≠ 가성 {f}")
+        if x["part"] == "WELD" and x["input_qty"] is not None and f and x["input_qty"] != f + (x["first_qty"] or 0):
+            checks.append(f"투입 {x['input_qty']} ≠ 가성 {f}" + (f" + 초품 등 {x['first_qty']}" if x["first_qty"] else ""))
         if x["serial_start"] and x["serial_end"]:
             n = int(x["serial_end"]) - int(x["serial_start"]) + 1
-            want = x["input_qty"] if x["part"] == "WELD" else x["total_qty"]
             x["serial_count"] = n
         if x["mark"] and not x["mark_date"]:
             checks.append("마킹코드를 날짜로 풀지 못함(CA LOT 미연결로 저장)")
         x["check"] = " · ".join(checks) or None
         x["findings"] = _findings(x)
         blocks.append(x)
-    # 시작 투입수량(양식에 칸이 없어 기본값을 넣고 화면에서 고친다, 팀장 2026-11-07): 용접부 = 총불량수량, 조립부 = 같은 모델 용접부의 CA 투입수량
+    # 리워크 투입수량(팀장 2026-11-07): 용접부 = 양식의 투입수량(가성 + 초품 등), 조립부 = 진성을 뺀 가성 합(유형 줄 가성의 합, 없으면 총수량 줄 가성)
+    # start_qty 이름으로 저장(rework_record.input_qty). S/N 은 LOT 시리얼 범위라 수량과 맞추지 않는다
     for x in blocks:
         if x["part"] == "WELD":
-            x["start_qty"] = x["total_qty"]
+            x["start_qty"] = x["input_qty"]
+            if x["first_qty"] is None and x["input_qty"] is not None and x["false_qty"] is not None and x["input_qty"] > x["false_qty"]:
+                x["first_qty"] = x["input_qty"] - x["false_qty"]
         else:
-            w = next((y for y in blocks if y["part"] == "WELD" and y["model"] == x["model"]), None)
-            x["start_qty"] = w["input_qty"] if w else None
+            fs = [r["false"] for r in x["rows"] if r.get("false")]
+            x["start_qty"] = sum(fs) if fs else x["false_qty"]
     notes = [str(n) for n in raw.get("uncertain_notes") or []]
     for n in names:
         notes = [s.replace(n, mask_person(n)) for s in notes]

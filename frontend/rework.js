@@ -9,11 +9,11 @@
   // (2026-11-07 팀장) 최종검사 일보처럼: 표는 읽기 전용 요약 + 줄마다 [고치기 · 빼기] 세로 단추, 고치기 = 줄 아래 편집 칸
   const fmt = v => v == null || v === '' ? '—' : Number(v).toLocaleString();
   const sumCells = b => `<td>${e(b.work_date || '?')}</td><td><b>${e(b.model)}</b></td><td>${e(PART[b.part] || b.part)}</td>
-        <td><b>${fmt(b.start_qty)}</b></td><td>${fmt(b.total_qty)}</td><td class="err">${b.true_qty || ''}</td>
+        <td>${fmt(b.total_qty)}</td><td class="err">${b.true_qty || ''}</td>
         <td style="white-space:nowrap">${b.part === 'WELD' ? ((b.true_types || []).map(t => e((t.name || '?') + (t.qty != null ? ' ' + t.qty : ''))).join('<br>') || '—')
           : ((b.rows || []).map(r => e(`${r.type || '?'} ${r.qty ?? '—'} · 진 ${r.true ?? 0} · 가 ${r.false ?? 0}`)).join('<br>') || '—')}</td>
-        <td>${fmt(b.false_qty)}</td><td>${b.part === 'WELD' ? fmt(b.input_qty) : (b.start_qty != null ? fmt(Math.max(0, b.start_qty - (+b.true_qty || 0))) + '<br><small class="muted">완성(시작−진성)</small>' : '—')}</td>
-        <td style="white-space:nowrap">${e(b.mark || '')} ${e(b.serial_start || '')}${b.serial_end ? ' ~ ' + e(b.serial_end) : ''}${b.serial_count ? `<br><small class="muted">${b.serial_count.toLocaleString()}개 번호</small>` : ''}</td>
+        <td>${fmt(b.false_qty)}</td><td><b>${fmt(b.start_qty)}</b>${b.part === 'WELD' && b.first_qty ? `<br><small class="muted">가성 ${fmt(b.false_qty)} + 초품 등 ${fmt(b.first_qty)}</small>` : b.part === 'ASSEMBLY' ? '<br><small class="muted">= 가성 합</small>' : ''}</td>
+        <td style="white-space:nowrap">${e(b.mark || '')} ${e(b.serial_start || '')}${b.serial_end ? ' ~ ' + e(b.serial_end) : ''}${b.serial_count ? `<br><small class="muted">LOT 시리얼 폭 ${b.serial_count.toLocaleString()} (1:1 아님)</small>` : ''}</td>
         <td>${b.ca_lot_code ? e(b.ca_lot_code) : '<small class="warn">미연결</small>'}${b.workers_masked?.length ? `<br><small class="muted">작업자 ${b.workers_masked.map(e).join('·')}</small>` : ''}</td>`;
   const stCell = b => (b.skip ? '<b class="warn">빼기(저장 안 함)</b>' : b.exists ? '<span class="warn">이미 저장됨</span>' : b.check ? `<span class="warn">${e(b.check)}</span>` : '<span class="ok">OK</span>')
     + (b.edited ? '<br><small class="warn">수정됨(저장 전)</small>' : '');
@@ -25,8 +25,8 @@
       ${I('work_date', '날짜', b.work_date, '140px', 'date')}
       <label>모델 <select data-rk="${e(b.key)}" data-rf="model">${['IV', 'OV', 'HSV'].map(m => `<option ${m === b.model ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
       <label>구분 <select data-rk="${e(b.key)}" data-rf="part">${Object.entries(PART).map(([v, t]) => `<option value="${v}" ${v === b.part ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
-      ${I('start_qty', '시작 투입', b.start_qty, '70px')} ${I('total_qty', b.part === 'WELD' ? '총불량' : '총수량(불량)', b.total_qty, '70px')} ${I('true_qty', '진성', b.true_qty, '60px')} ${I('false_qty', '가성', b.false_qty, '60px')}
-      ${b.part === 'WELD' ? I('input_qty', 'CA 투입', b.input_qty, '60px') : ''}
+      ${I('total_qty', b.part === 'WELD' ? '총불량' : '총수량(불량)', b.total_qty, '70px')} ${I('true_qty', '진성', b.true_qty, '60px')} ${I('false_qty', '가성', b.false_qty, '60px')}
+      ${b.part === 'WELD' ? I('first_qty', '초품 등 추가', b.first_qty, '60px') : ''} ${I('start_qty', b.part === 'WELD' ? '리워크 투입(가성+초품 등)' : '리워크 투입(가성 합)', b.start_qty, '70px')}
       ${I('mark', '마킹', b.mark, '60px')} ${I('serial_start', 'S/N 시작', b.serial_start, '90px')} ${I('serial_end', 'S/N 끝', b.serial_end, '90px')}</div>
       ${b.part === 'WELD' ? `<label class="je-wide">진성 유형 (예: 권선불량 4, 핀찍힘 9) <input data-rk="${e(b.key)}" data-rf="true_types_txt" value="${e(typesTxt)}"></label>`
         : `<div class="je-list"><b>유형별 (저항·깊이·내경·마킹)</b>${rowsHtml}</div>`}
@@ -39,10 +39,10 @@
     const bs = prev.blocks;
     box.innerHTML = `<div class="muted">${e(prev.file || '')} · 리워크 날짜 ${e(prev.work_date || '?')} (${prev.date_source === 'FILE' ? '파일명' : 'AI 판독'}) · 칸 ${bs.length}개 · <b>고치기</b>로 값을 고치고, 저장하지 않을 칸은 <b>빼기</b></div>
       ${(prev.uncertain_notes || []).length ? `<div class="muted" style="margin:4px 0">메모: ${prev.uncertain_notes.map(e).join(' / ')}</div>` : ''}
-      <div class="tbl-wrap"><table><tr><th>상태</th><th>날짜</th><th>모델</th><th>구분</th><th>시작 투입</th><th>총불량</th><th>진성</th><th>진성 유형 · 유형별</th><th>가성</th><th>CA 투입 · 완성</th><th>마킹 · S/N 범위</th><th>CA LOT</th><th></th></tr>
+      <div class="tbl-wrap"><table><tr><th>상태</th><th>날짜</th><th>모델</th><th>구분</th><th>총불량</th><th>진성</th><th>진성 유형 · 유형별</th><th>가성</th><th>리워크 투입</th><th>마킹 · LOT 시리얼 범위</th><th>CA LOT</th><th></th></tr>
       ${bs.map(b => `<tr data-rk-row="${e(b.key)}"${b.skip ? ' style="opacity:.5"' : ''}><td class="st-cell">${stCell(b)}</td>${sumCells(b)}
         <td><div class="act-col"><button class="ghost small" type="button" data-rk-ed="${e(b.key)}">고치기</button><button class="ghost small" type="button" data-rk-skip="${e(b.key)}">${b.skip ? '빼기 취소' : '빼기'}</button></div></td></tr>
-        ${b.open ? `<tr class="je-tr"><td colspan="13" style="background:var(--edit-bg,#f4f8fd);text-align:left">${editor(b)}</td></tr>` : ''}`).join('')}</table></div>`;
+        ${b.open ? `<tr class="je-tr"><td colspan="12" style="background:var(--edit-bg,#f4f8fd);text-align:left">${editor(b)}</td></tr>` : ''}`).join('')}</table></div>`;
     const n = bs.filter(b => !b.skip && !b.exists).length;
     $('#rk_save').textContent = `리워크 ${n}건 DB에 저장`;
   }
@@ -113,10 +113,10 @@
     const fmt = n => n == null ? '—' : Number(n).toLocaleString();
     m13List.show('rework', $('#rk_list'), rows, {
       dateKey: 'work_date', timeKey: 'recorded_at', dateLabel: '리워크일', empty: '저장된 리워크가 없습니다.',
-      head: '<th>리워크일</th><th>모델</th><th>구분</th><th>마킹 · S/N 범위</th><th>번호 수</th><th>CA LOT</th><th>시작 투입</th><th>총불량</th><th>진성</th><th>진성 유형</th><th>가성</th><th>CA 투입 · 완성</th><th>입력 시각</th><th></th>',
+      head: '<th>리워크일</th><th>모델</th><th>구분</th><th>마킹 · LOT 시리얼 범위</th><th>시리얼 폭</th><th>CA LOT</th><th>총불량</th><th>진성</th><th>진성 유형</th><th>가성</th><th>리워크 투입</th><th>입력 시각</th><th></th>',
       row: r => `<tr><td>${e(r.work_date)}${Number(r.same_count) > 1 ? ' <span class="m13-badge" style="background:#c62828">중복 ' + r.same_count + '</span>' : ''}</td><td>${e(r.model_code)}</td><td>${e(r.part_ko || '리워크')}</td>
         <td style="white-space:nowrap">${e(r.mark || '')} ${e(r.serial_start_raw || '')}${r.serial_end_raw ? ' ~ ' + e(r.serial_end_raw) : ''}</td><td>${fmt(r.serial_count)}</td><td>${e(r.ca_lot_code || '—')}</td>
-        <td><b>${fmt(r.start_qty)}</b></td><td>${fmt(r.total_qty)}</td><td class="err">${r.true_qty || ''}</td><td style="white-space:nowrap">${e(r.true_types || '—')}${r.check_note ? `<br><small class="warn">${e(r.check_note)}</small>` : ''}</td><td>${fmt(r.false_qty)}</td><td>${fmt(r.part === 'WELD' ? r.to_ca_qty : r.completed_qty)}</td>
+        <td>${fmt(r.total_qty)}</td><td class="err">${r.true_qty || ''}</td><td style="white-space:nowrap">${e(r.true_types || '—')}${r.check_note ? `<br><small class="warn">${e(r.check_note)}</small>` : ''}</td><td>${fmt(r.false_qty)}</td><td><b>${fmt(r.start_qty)}</b>${r.first_qty ? `<br><small class="muted">초품 등 ${fmt(r.first_qty)}</small>` : ''}</td>
         <td class="muted">${e(m13Time(r.recorded_at))}</td><td><button class="ghost small" type="button" data-rkv="${e(r.rework_id)}" data-rkl="${e(r.work_date + ' ' + r.model_code + ' ' + (r.part_ko || ''))}">삭제</button></td></tr>`,
       after: box => box.querySelectorAll('[data-rkv]').forEach(b => b.onclick = () => {
         const note = prompt(b.dataset.rkl + ' 리워크를 삭제(VOID)할까요?\n사유를 5자 이상 적어 주세요'); if (note === null) return;
