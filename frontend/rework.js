@@ -27,7 +27,7 @@
       <label>구분 <select data-rk="${e(b.key)}" data-rf="part">${Object.entries(PART).map(([v, t]) => `<option value="${v}" ${v === b.part ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
       ${I('total_qty', b.part === 'WELD' ? '총불량' : '총수량(불량)', b.total_qty, '70px')} ${I('true_qty', '진성', b.true_qty, '60px')} ${I('false_qty', '가성', b.false_qty, '60px')}
       ${b.part === 'WELD' ? I('first_qty', '초품 등 추가', b.first_qty, '60px') : ''} ${I('start_qty', b.part === 'WELD' ? '리워크 투입(가성+초품 등)' : '리워크 투입(가성 합)', b.start_qty, '70px')}
-      ${I('mark', '마킹', b.mark, '60px')} ${I('serial_start', 'S/N 시작', b.serial_start, '90px')} ${I('serial_end', 'S/N 끝', b.serial_end, '90px')}</div>
+      ${I('mark', 'CA 시리얼 마킹', b.mark, '60px')} ${I('serial_start', 'CA 시리얼 시작', b.serial_start, '90px')} ${I('serial_end', '끝', b.serial_end, '90px')}</div>
       ${b.part === 'WELD' ? `<label class="je-wide">진성 유형 (예: 권선불량 4, 핀찍힘 9) <input data-rk="${e(b.key)}" data-rf="true_types_txt" value="${e(typesTxt)}"></label>`
         : `<div class="je-list"><b>유형별 (저항·깊이·내경·마킹)</b>${rowsHtml}</div>`}
       <label class="je-wide">메모 <input data-rk="${e(b.key)}" data-rf="note" value="${e(b.note || '')}"></label>
@@ -39,7 +39,7 @@
     const bs = prev.blocks;
     box.innerHTML = `<div class="muted">${e(prev.file || '')} · 리워크 날짜 ${e(prev.work_date || '?')} (${prev.date_source === 'FILE' ? '파일명' : 'AI 판독'}) · 칸 ${bs.length}개 · <b>고치기</b>로 값을 고치고, 저장하지 않을 칸은 <b>빼기</b></div>
       ${(prev.uncertain_notes || []).length ? `<div class="muted" style="margin:4px 0">메모: ${prev.uncertain_notes.map(e).join(' / ')}</div>` : ''}
-      <div class="tbl-wrap"><table><tr><th>상태</th><th>날짜</th><th>모델</th><th>구분</th><th>총불량</th><th>진성</th><th>진성 유형 · 유형별</th><th>가성</th><th>리워크 투입</th><th>마킹 · LOT 시리얼 범위</th><th>CA LOT</th><th></th></tr>
+      <div class="tbl-wrap"><table><tr><th>상태</th><th>날짜</th><th>모델</th><th>구분</th><th>총불량</th><th>진성</th><th>진성 유형 · 유형별</th><th>가성</th><th>리워크 투입</th><th>CA 시리얼 (마킹 · 시작~끝)</th><th>CA LOT</th><th></th></tr>
       ${bs.map(b => `<tr data-rk-row="${e(b.key)}"${b.skip ? ' style="opacity:.5"' : ''}><td class="st-cell">${stCell(b)}</td>${sumCells(b)}
         <td><div class="act-col"><button class="ghost small" type="button" data-rk-ed="${e(b.key)}">고치기</button><button class="ghost small" type="button" data-rk-skip="${e(b.key)}">${b.skip ? '빼기 취소' : '빼기'}</button></div></td></tr>
         ${b.open ? `<tr class="je-tr"><td colspan="12" style="background:var(--edit-bg,#f4f8fd);text-align:left">${editor(b)}</td></tr>` : ''}`).join('')}</table></div>`;
@@ -113,7 +113,7 @@
     const fmt = n => n == null ? '—' : Number(n).toLocaleString();
     m13List.show('rework', $('#rk_list'), rows, {
       dateKey: 'work_date', timeKey: 'recorded_at', dateLabel: '리워크일', empty: '저장된 리워크가 없습니다.',
-      head: '<th>리워크일</th><th>모델</th><th>구분</th><th>마킹 · LOT 시리얼 범위</th><th>시리얼 폭</th><th>CA LOT</th><th>총불량</th><th>진성</th><th>진성 유형</th><th>가성</th><th>리워크 투입</th><th>입력 시각</th><th></th>',
+      head: '<th>리워크일</th><th>모델</th><th>구분</th><th>CA 시리얼 (마킹 · 시작~끝)</th><th>시리얼 폭</th><th>CA LOT</th><th>총불량</th><th>진성</th><th>진성 유형</th><th>가성</th><th>리워크 투입</th><th>입력 시각</th><th></th>',
       row: r => `<tr><td>${e(r.work_date)}${Number(r.same_count) > 1 ? ' <span class="m13-badge" style="background:#c62828">중복 ' + r.same_count + '</span>' : ''}</td><td>${e(r.model_code)}</td><td>${e(r.part_ko || '리워크')}</td>
         <td style="white-space:nowrap">${e(r.mark || '')} ${e(r.serial_start_raw || '')}${r.serial_end_raw ? ' ~ ' + e(r.serial_end_raw) : ''}</td><td>${fmt(r.serial_count)}</td><td>${e(r.ca_lot_code || '—')}</td>
         <td>${fmt(r.total_qty)}</td><td class="err">${r.true_qty || ''}</td><td style="white-space:nowrap">${e(r.true_types || '—')}${r.check_note ? `<br><small class="warn">${e(r.check_note)}</small>` : ''}</td><td>${fmt(r.false_qty)}</td><td><b>${fmt(r.start_qty)}</b>${r.first_qty ? `<br><small class="muted">초품 등 ${fmt(r.first_qty)}</small>` : ''}</td>
