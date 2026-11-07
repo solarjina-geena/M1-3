@@ -431,6 +431,9 @@ async def journal_preview_image(request: Request, file: UploadFile = File(...), 
                 out = await ocr_task
             except Exception as e:
                 await asyncio.to_thread(_log_call, who, kind or "JOURNAL", "VISION_LLM", data, label, media, t0, False, error=str(e))
+                if "credit balance is too low" in str(e):
+                    # (2026-11-07) Anthropic 사용 잔액 부족 — 코드 문제가 아니므로 쉬운 말로 알리고, 화면은 남은 쪽을 더 보내지 않는다(402)
+                    raise HTTPException(402, "AI 판독 사용 잔액(Anthropic 크레딧)이 부족합니다. console.anthropic.com → Plans & Billing 에서 충전한 뒤 다시 판독하세요.")
                 raise
             if page is not None:
                 for it in out.get("items") or []:
