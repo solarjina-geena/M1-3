@@ -369,7 +369,13 @@ def _journal_meta(n: dict, who: dict, via: str) -> dict:
 @router.post("/journal")
 def journal_save(payload: JournalPayload, authorization: Optional[str] = Header(None), via: str = Query("form", max_length=20)):
     who = _admin(authorization)
-    return _wrap(_repo().journal_save, _journal_meta(payload.normalized(), who, via))
+    out = _wrap(_repo().journal_save, _journal_meta(payload.normalized(), who, via))
+    # (2026-11-08) 위치도를 먼저 넣은 날도 일보 저장 뒤 그날 실행에 다시 연결(실행 1건일 때만)
+    try:
+        _repo().c.rpc("m13_position_relink", {"p": {"actor": _actor(who)}})
+    except Exception:
+        pass
+    return out
 
 
 class BatchIn(BaseModel):
