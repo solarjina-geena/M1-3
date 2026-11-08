@@ -99,6 +99,46 @@ def defects(process: Optional[str] = None, model: Optional[str] = None, date_fro
     return _wrap(_repo().defects, process, model, date_from, date_to)
 
 
+# 조립 일보 CA(압입) 불량은 양식에 이름이 고정 — 전사본 영어 코드·줄임말을 같은 불량으로 묶어 표시(DB 원문은 그대로)
+_CA_DEFECT_ALIAS = {
+    "깊이": "깊이불량", "depth": "깊이불량", "depth_defect_candidate": "깊이불량",
+    "저항": "저항불량", "resistance": "저항불량", "CA_resistance": "저항불량",
+    "lower_case_mix": "Lower Case 혼입불량", "lower_case_mix_candidate": "Lower Case 혼입불량",
+    "내전압불량": "내전압 불량", "내전압": "내전압 불량", "voltage": "내전압 불량", "withstand_voltage": "내전압 불량", "dielectric": "내전압 불량",
+    "내경불량": "내경 불량", "CA_inner_diameter": "내경 불량",
+    "핀휨 불량": "핀휨",
+}
+
+
+@router.get("/defects/by-model")
+def defects_by_model(process: str = Query(..., pattern="^IMEB3_(STITCHING|WINDING|CA_PRESS|INJECTION)$"),
+                     date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
+    """(2026-11-08 팀장) 공정 일별 생산·불량 아래 '불량 유형별' 막대용: 유형 × 모델 수량(작업일보 공정 불량, 리워크·비전 재검 제외)."""
+    def run():
+        params: dict = {"process_code": f"eq.{process}"}
+        if date_from and date_to:
+            params["and"] = f"(the_date.gte.{date_from},the_date.lte.{date_to})"
+        elif date_from:
+            params["the_date"] = f"gte.{date_from}"
+        elif date_to:
+            params["the_date"] = f"lte.{date_to}"
+        rows = _repo().c.select("m13_defect_by_type", params, limit=100000)
+        agg: dict = {}
+        for r in rows:
+            q = r.get("qty") or 0
+            if q <= 0:
+                continue
+            nm = _CA_DEFECT_ALIAS.get(r["defect_name"], r["defect_name"]) if process == "IMEB3_CA_PRESS" else r["defect_name"]
+            a = agg.setdefault(nm, {"name": nm, "by": {}, "raw": set()})
+            a["raw"].add(r["defect_name"])
+            a["by"][r["model_code"]] = a["by"].get(r["model_code"], 0) + q
+        out = sorted(agg.values(), key=lambda a: -sum(a["by"].values()))
+        for a in out:
+            a["raw"] = sorted(a["raw"])
+        return out
+    return _wrap(run)
+
+
 @router.get("/defects/stitching-quantity-status")
 def stitching_defect_quantity_status(model: Optional[str] = None, date_from: Optional[str] = Query(None, alias="from"), date_to: Optional[str] = Query(None, alias="to")):
     return _wrap(_repo().stitching_defect_quantity_status, model, date_from, date_to)
