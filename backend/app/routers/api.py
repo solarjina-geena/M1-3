@@ -914,7 +914,7 @@ def rework_public(date_from: Optional[str] = Query(None, alias="from"), date_to:
     """대시보드용 리워크(공개 읽기): 작업자·원문 메모는 빼고 S/N 범위·수량·CA LOT·진성 유형만."""
     keep = ("rework_id", "model_code", "work_date", "part", "part_ko", "mark", "marked_lot_date", "serial_start_raw", "serial_end_raw", "start_qty", "first_qty", "memo", "memo_at",
             "serial_start_num", "serial_end_num", "serial_count", "total_qty", "input_qty", "true_qty", "false_qty", "true_types", "ca_lot_code", "check_note")
-    rows = [{k: r.get(k) for k in keep} for r in _repo().rework_entries()]
+    rows = [{**{k: r.get(k) for k in keep}, "from_journal": bool(r.get("from_journal_run"))} for r in _repo().rework_entries()]
     return [r for r in rows if (not date_from or (r["work_date"] or "") >= date_from) and (not date_to or (r["work_date"] or "") <= date_to)]
 
 
@@ -1096,6 +1096,27 @@ def journal_void(body: JournalVoidIn, authorization: Optional[str] = Header(None
     what = f"{row.get('model_code') or ''} {row.get('work_date') or ''} LOT {row.get('lot_code') or '-'}".strip()
     return _wrap(_repo().journal_void, {"run_id": body.run_id, "note": note, "actor": _actor(who),
                                         "reason": _reason(row.get("process_code") or "", "journal_void", f"작업일보 삭제(VOID) · {what} · {note}")})
+
+
+class JournalToReworkIn(BaseModel):
+    process_run_id: str
+    note: str = ""
+    undo: bool = False
+
+
+@router.post("/journal/to-rework")
+def journal_to_rework(body: JournalToReworkIn, authorization: Optional[str] = Header(None)):
+    """(2026-11-08 팀장) 리워크 일보 도입(10/16) 전에 조립 작업일보에 적은 리워크: 저장된 권선·압입을 하루 전체 리워크로 바꾼다.
+    undo=True 면 일반 생산으로 되돌린다. 모든 변경은 CRUD 이력에 사유와 함께."""
+    who = _admin(authorization)
+    note = body.note.strip()
+    if len(note) > 300 or (note and _PII.search(note)):
+        raise HTTPException(400, "메모는 300자까지, 이메일·전화번호 형태 금지")
+    if not re.fullmatch(r"[0-9a-f-]{36}", body.process_run_id or ""):
+        raise HTTPException(400, "작업일보 번호가 올바르지 않습니다")
+    what = "리워크 → 일반 생산으로 되돌림" if body.undo else "조립 작업일보를 리워크로 바꿈(리워크 일보 도입 전)"
+    return _wrap(_repo().journal_to_rework, {"process_run_id": body.process_run_id, "note": note, "undo": body.undo, "actor": _actor(who),
+                                             "reason": _reason("IMEB3_CA_PRESS", "rework", what + (f" · {note}" if note else ""))})
 
 
 @router.get("/final-entries")

@@ -37,15 +37,29 @@
     } : {
       dateKey: 'work_date', timeKey: 'recorded_at', dateLabel: '작업일', empty: `저장된 ${KO[kind]} 작업일보가 없습니다.`,
       head: '<th>작업일</th><th>모델</th><th>공정</th><th>LOT</th><th>생산 수량</th><th>불량</th><th>출처</th><th>입력 시각</th><th></th>',
-      row: r => `<tr><td>${e(r.work_date)}${dup(r)}</td><td>${e(r.model_code)}</td><td>${e(PN[r.process_code] || r.process_code)}</td><td>${e(r.lot_code || '—')}</td><td>${fmt(r.qty)}</td><td>${fmt(r.defects)}</td><td>${src(r)}${edits(r)}</td><td class="muted">${e(typeof m13Time === 'function' ? m13Time(r.recorded_at) : r.recorded_at)}</td><td><button class="ghost small" type="button" data-jv="${e(r.run_id)}" data-jl="${e(r.model_code + ' ' + (PN[r.process_code] || '') + ' ' + r.work_date + ' ' + (r.lot_code || ''))}">삭제</button></td></tr>`
+      row: r => `<tr><td>${e(r.work_date)}${dup(r)}</td><td>${e(r.model_code)}</td><td>${e(PN[r.process_code] || r.process_code)}</td><td>${e(r.lot_code || '—')}</td><td>${fmt(r.qty)}</td><td>${fmt(r.defects)}</td><td>${src(r)}${edits(r)}</td><td class="muted">${e(typeof m13Time === 'function' ? m13Time(r.recorded_at) : r.recorded_at)}</td><td><button class="ghost small" type="button" data-jv="${e(r.run_id)}" data-jl="${e(r.model_code + ' ' + (PN[r.process_code] || '') + ' ' + r.work_date + ' ' + (r.lot_code || ''))}">삭제</button>${/WINDING|CA_PRESS/.test(r.process_code || '') ? `<button class="ghost small" type="button" style="margin-top:3px" title="리워크 일보 도입(10/16) 전에 조립 일보 양식에 적은 리워크 — 그날 권선·압입을 하루 전체 리워크로" data-jrw="${e(r.run_id)}" data-jl="${e(r.model_code + ' ' + r.work_date + ' 권선·압입')}">리워크로 바꾸기</button>` : ''}</td></tr>`
     };
-    opts.after = el => el.querySelectorAll('[data-jv]').forEach(btn => btn.onclick = async () => {
+    const afterVoid = el => el.querySelectorAll('[data-jrw]').forEach(btn => btn.onclick = async () => {
+      const note = prompt(`${btn.dataset.jl} 를 '하루 전체 리워크'로 바꿀까요?
+(리워크 일보 도입 전, 조립 일보에 적은 리워크)
+
+- 생산량·LOT 흐름·불량 그래프에서 빠지고 대시보드 리워크 탭에 나타납니다
+- 리워크 탭 목록의 '조립 일보로 되돌리기'로 언제든 되돌릴 수 있습니다
+
+메모(선택, 예: 비고에 리워크 작업수량 1950 기재):`, '');
+      if (note === null) return;
+      btn.disabled = true; btn.textContent = '바꾸는 중…';
+      try { const r = await api('/api/journal/to-rework', { method: 'POST', authed: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ process_run_id: btn.dataset.jrw, note: note.trim() }) }); alert(`리워크로 바꿨습니다 · ${r.changed}건(권선·압입)`); load(kind) }
+      catch (err) { btn.disabled = false; btn.textContent = '리워크로 바꾸기'; alert('바꾸기 실패 · ' + err.message) }
+    });
+    const prevAfter = el => afterVoid(el);
+    opts.after = el => { prevAfter(el); el.querySelectorAll('[data-jv]').forEach(btn => btn.onclick = async () => {
       const note = prompt(`이 기록을 삭제(무효 처리)할까요?\n${btn.dataset.jl}\n\n삭제 사유를 5자 이상 적어 주세요(예: 다른 제품 일보를 잘못 판독, 같은 일보 중복 저장)`);
       if (note == null) return; if (note.trim().length < 5) { alert('사유를 5자 이상 적어 주세요'); return }
       btn.disabled = true; btn.textContent = '삭제 중…';
       try { await api(fin ? '/api/final/void' : '/api/journal/void', { method: 'POST', authed: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run_id: btn.dataset.jv, note: note.trim() }) }); load(kind) }
       catch (err) { btn.disabled = false; btn.textContent = '삭제'; alert('삭제 실패 · ' + err.message) }
-    });
+    }) };
     m13List.show('journal_' + kind, b, rows, opts);
     if (fin) loadReinsp(); else document.getElementById('jreCard')?.remove();
   }

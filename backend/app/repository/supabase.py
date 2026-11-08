@@ -946,6 +946,12 @@ class SupabaseRepository(Repository):
         payload.setdefault("actor", settings.actor)
         return self.c.rpc("m13_final_void", {"p": payload})
 
+    def journal_to_rework(self, payload: dict[str, Any]) -> dict:
+        """(2026-11-08) 일반 생산으로 저장된 조립 일보(권선·압입)를 하루 전체 리워크로 바꾸거나(undo=False) 되돌린다(undo=True)."""
+        self._guard()
+        payload.setdefault("actor", settings.actor)
+        return self.c.rpc("m13_journal_to_rework", {"p": payload})
+
     def journal_void(self, payload: dict[str, Any]) -> dict:
         self._guard()
         payload.setdefault("actor", settings.actor)
