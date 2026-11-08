@@ -30,9 +30,9 @@ class Settings:
         self.actor = g("M13_ACTOR", "m1-3-app")
         # 팀 Streamlit 앱과 같은 규칙: 허용 이메일 목록(쉼표 구분). 비어 있으면 Supabase 로그인은 아무도 통과 못 함.
         self.allowed_emails = frozenset(e.strip().casefold() for e in g("MQI_ALLOWED_EMAILS").split(",") if e.strip())
-        # (2026-11-08 팀장) 사용자 테스트 전용 계정 tester01~08 — 실제 이메일 아님. 개인 IMEB3 DB 에서만 허용, 테스트 끝나면 지운다.
+        # (2026-11-08 팀장) 사용자 테스트 전용 계정 tester01~20 — 실제 이메일 아님. 개인 IMEB3 DB 에서만 허용, 테스트 끝나면 지운다.
         if "clyjvqffabxpizkhydux" not in g("SUPABASE_URL") and g("M13_DISABLE_TEST_ACCOUNTS") != "1":
-            self.allowed_emails = self.allowed_emails | frozenset(f"tester{i:02d}@m13-test.example" for i in range(1, 9))
+            self.allowed_emails = self.allowed_emails | frozenset(f"tester{i:02d}@m13-test.example" for i in range(1, 21))
         self.public_url = g("PUBLIC_URL")  # 배포 주소(Render 등). 화면 표시용
         # 팀 OCR 검토·적재 앱(Streamlit, 이*규 작성, 팀 Supabase Auth 로그인). 관리자 입력 탭에서 연결한다.
         self.team_ocr_url = g("TEAM_OCR_APP_URL", "https://m3-1-rawdata-demo.onrender.com")
