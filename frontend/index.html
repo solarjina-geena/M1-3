@@ -275,8 +275,8 @@ function ensureProcSwitch(){const host=document.querySelector('#lotGraph');if(!h
 let finView='flow',finDefData=null,finDefKey='',finMetric='qty';
 function renderFinalDefects(){
  const host=$('#lotGraph');if(!host)return;
- $('#graphTitle').textContent='최종검사 · 불량 유형별 (본검사 2차)';
- $('#graphDescription').textContent='위쪽 표시 구간의 본검사(2차) 불량을 유형별로 모델 색 막대로 보여 줍니다. PPM = 불량수량 ÷ 검사수량 × 1,000,000 (검사수량이 적힌 검사만). 1차검사(훈련)·재검사는 합계에서 뺍니다.';
+ $('#graphTitle').textContent='최종검사 · 불량 유형별 (검사일 기준 · 본검사 2차)';
+ $('#graphDescription').textContent='검사일 기준 합계입니다(제품 LOT 별이 아님 — 검사 한 건이 여러 LOT 을 함께 보고 불량은 합계만 적으므로 LOT 별로 나누지 않음, LOT 별은 LOT 흐름 화면). 위쪽 표시 구간의 본검사(2차) 불량을 유형별로 모델 색 막대로 보여 줍니다. PPM = 불량수량 ÷ 검사수량 × 1,000,000 (검사수량이 적힌 검사만). 1차검사(훈련)·재검사는 합계에서 뺍니다.';
  $('#overallGraphLegend').hidden=true;$('#injectionGraphLegend').hidden=true;
  const key=(axisStart||'')+'|'+(axisEnd||'');
  if(finDefKey!==key){finDefKey=key;finDefData=null;fetch(API_BASE+'/api/final-defects?'+new URLSearchParams({from:axisStart||'',to:axisEnd||''}),{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(Error('HTTP '+r.status))).then(d=>{if(finDefKey===key){finDefData=d;if(processFilter==='FINAL_INSPECTION'&&finView==='defect')drawCurrentGraph()}}).catch(e=>{if(finDefKey===key){finDefData={error:e.message};drawCurrentGraph()}})}
@@ -300,7 +300,7 @@ function renderFinalDefects(){
    let ln=`<b style="color:${m==='OV'?'#8a6400':COL[m]}">${m}</b> 많은 순: `+t3.map((d,i)=>`${i+1}. ${d.name} <b>${fmt(q(d,m,CLS))}</b>`).join(' · ');
    const wr=d=>q(d,m,CLS)+q(d,m,'재검'),r1=[...finDefData.defects].sort((a,b)=>wr(b)-wr(a))[0];
    if(r1&&r1!==t3[0]&&wr(r1)>0)ln+=` <span style="color:#b45309">(재검 포함 1위: ${r1.name} ${fmt(wr(r1))})</span>`;lines.push(ln)}
-  if(lines.length){top.innerHTML='🏷 '+lines.join('<br>🏷 ')+' <small style="color:#6b7280">— 본검사(2차) 기준</small>';box.append(top)}}
+  if(lines.length){top.innerHTML='🏷 '+lines.join('<br>🏷 ')+' <small style="color:#6b7280">— 검사일 기준 · 본검사(2차)</small>';box.append(top)}}
  const val=(d,m)=>{const b=d.by[m]?.[CLS];if(!b)return 0;return finMetric==='ppm'?(b.ppm||0):b.qty};
  let types=finDefData.defects.filter(d=>models.some(m=>(d.by[m]?.[CLS]?.qty||0)>0));
  const tq=d=>models.reduce((s,m)=>s+val(d,m),0);
@@ -343,7 +343,7 @@ function renderFinalDefects(){
    el('line',{x1:LW,x2:W-RW,y1:y0+rowH-RG/2,y2:y0+rowH-RG/2,stroke:'#eef0f2'});y0+=rowH});
  }
  const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);box.append(sc);
- const notes=[`표시 구간 ${axisStart||'처음'} ~ ${axisEnd||'끝'} · 본검사(2차)만 · 1차검사(훈련)·재검사 제외`,'불량명은 같은 불량의 다른 표기(예: marking·Marking 불량)를 묶어 표시 — 이름에 마우스를 올리면 원문 표기',more>0?`상위 ${LIMIT}개만 표시(나머지 ${more}개 유형)`:'',finDefData.not_imeb3_qty?`iMEB3 에 없는 불량(탈피·납조) ${fmt(finDefData.not_imeb3_qty)} EA 는 다른 제품 칸을 읽은 것이라 제외`:'',finDefData.null_qty_findings?`수량이 빈 불량 줄 ${finDefData.null_qty_findings}건은 막대에서 제외(1차·재검 포함 전체)`:'',finDefData.qty_without_inspected?`검사수량이 빈 검사의 불량 ${fmt(finDefData.qty_without_inspected)} EA 는 막대에는 넣고 PPM 에서는 제외`:''].filter(Boolean);
+ const notes=[`검사일 ${axisStart||'처음'} ~ ${axisEnd||'끝'} 기준(제품 LOT 별 아님) · 본검사(2차)만 · 1차검사(훈련)·재검사 제외`,'불량명은 같은 불량의 다른 표기(예: marking·Marking 불량)를 묶어 표시 — 이름에 마우스를 올리면 원문 표기',more>0?`상위 ${LIMIT}개만 표시(나머지 ${more}개 유형)`:'',finDefData.not_imeb3_qty?`iMEB3 에 없는 불량(탈피·납조) ${fmt(finDefData.not_imeb3_qty)} EA 는 다른 제품 칸을 읽은 것이라 제외`:'',finDefData.null_qty_findings?`수량이 빈 불량 줄 ${finDefData.null_qty_findings}건은 막대에서 제외(1차·재검 포함 전체)`:'',finDefData.qty_without_inspected?`검사수량이 빈 검사의 불량 ${fmt(finDefData.qty_without_inspected)} EA 는 막대에는 넣고 PPM 에서는 제외`:''].filter(Boolean);
  const n=document.createElement('p');n.className='fd-note';n.textContent=notes.join(' · ');box.append(n);
 }
 // ---- 전체 흐름 · LOT 사슬 그래프 (2026-11-07 팀장): "9/10 사출 LOT 흐름"처럼 날짜+공정으로 물으면 그날 그 공정 LOT 들이
