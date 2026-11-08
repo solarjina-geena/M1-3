@@ -734,6 +734,14 @@ class SupabaseRepository(Repository):
         payload.setdefault("actor", settings.actor)
         return self.c.rpc("m13_ai_call_log", {"p": payload})
 
+    # ---------------------------------------------------------------- 사용자 테스트 설문 (2026-11-08, 개인 전용 표 public.m13_survey_response)
+    def survey_submit(self, payload: dict[str, Any]) -> dict:
+        self._guard()
+        return self.c.rpc("m13_survey_submit", {"p": payload})
+
+    def survey_rows(self) -> list[dict]:
+        return self.c.select("m13_survey_rows", {"order": "submitted_at_kst.desc"}, limit=2000)
+
     def ai_calls(self, limit: int = 2000) -> list[dict]:
         return self.c.select("m13_ai_calls", {"order": "started_at.desc"}, limit=limit)
 

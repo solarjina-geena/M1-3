@@ -362,6 +362,52 @@ def _enrich_reinsp(items: list[dict]) -> list[dict]:
     return items
 
 
+# ---------------------------------------------------------------- 사용자 테스트 설문 (2026-11-08 팀장: 구글폼 대신 대시보드 안 설문)
+# 로그인 없이 제출(테스터용). 이름·이메일·IP 는 받지 않고, 마감 시각 뒤에는 받지 않는다. 같은 주소에서 1분에 5건까지.
+SURVEY_CLOSE_KST = "2026-11-08T13:30:00+09:00"   # 안내는 13:00, 늦은 제출 30분 여유
+_survey_hits: dict[str, list[float]] = {}
+
+
+class SurveyIn(BaseModel):
+    tester_group: str
+    answers: dict[str, Any]
+
+
+@router.get("/survey/status")
+def survey_status():
+    from datetime import datetime
+    close = datetime.fromisoformat(SURVEY_CLOSE_KST)
+    return {"open": datetime.now(close.tzinfo) < close, "close_at": SURVEY_CLOSE_KST}
+
+
+@router.post("/survey")
+def survey_submit(body: SurveyIn, request: Request):
+    import time
+    from datetime import datetime
+    close = datetime.fromisoformat(SURVEY_CLOSE_KST)
+    if datetime.now(close.tzinfo) >= close:
+        raise HTTPException(403, "설문이 마감되었습니다. 참여해 주셔서 감사합니다.")
+    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "")).split(",")[0].strip()
+    now = time.time()
+    hits = [t for t in _survey_hits.get(ip, []) if now - t < 60]
+    if len(hits) >= 5:
+        raise HTTPException(429, "잠시 뒤 다시 제출해 주세요.")
+    _survey_hits[ip] = hits + [now]
+    text = json.dumps(body.answers, ensure_ascii=False)
+    if len(text) > 15000:
+        raise HTTPException(400, "응답이 너무 깁니다.")
+    if _PII.search(text):
+        raise HTTPException(400, "이메일·전화번호는 적지 말아 주세요(이름 없이 집계합니다).")
+    return _wrap(_repo().survey_submit, {"tester_group": body.tester_group, "answers": body.answers})
+
+
+@router.get("/admin/survey")
+def survey_rows(authorization: Optional[str] = Header(None)):
+    """설문 응답 전체(관리 화면 '설문 결과' 탭). 로그인 필요."""
+    _admin(authorization)
+    return {"rows": _wrap(_repo().survey_rows), "close_at": SURVEY_CLOSE_KST}
+
+
 @router.get("/admin/ai-calls")
 def ai_calls(authorization: Optional[str] = Header(None)):
     """판독 실행 기록: 문서 종류별 횟수·평균 토큰·평균 시간·모델(보고서 비교표) + 최근 기록."""

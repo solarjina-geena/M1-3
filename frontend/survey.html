@@ -1,0 +1,99 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>손대시 사용자 테스트 설문</title>
+<style>
+:root{--ink:#1f2937;--muted:#6b7280;--line:#e5e7eb;--bg:#f6f7f9;--card:#fff;--navy:#0f2a44;--accent:#c2410c;--ok:#0f766e;--err:#c62828}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif}
+header{background:var(--navy);color:#fff;padding:22px 16px}header .in{max-width:760px;margin:0 auto}header h1{margin:0 0 4px;font-size:22px}header p{margin:0;color:#cadcfc;font-size:14px}
+header a{color:#fde7d9}
+main{max-width:760px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 18px 8px;margin-bottom:14px}
+.card h2{margin:0 0 4px;font-size:17px;color:var(--navy)}.card .sub{color:var(--muted);font-size:13px;margin-bottom:10px}
+.q{padding:12px 0;border-top:1px solid var(--line)}.q:first-of-type{border-top:0}
+.q>.t{font-weight:600;margin-bottom:6px}.q>.t .req{color:var(--accent);margin-left:3px}.q>.h{color:var(--muted);font-size:13px;margin:-2px 0 6px}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opts label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;background:#fff;font-size:14px}
+.opts label:has(input:checked){border-color:var(--navy);background:#eef3f9;font-weight:600}
+.opts input{accent-color:var(--navy)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pair>div>small{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}
+input[type=text],textarea{width:100%;border:1px solid #cfd5dc;border-radius:8px;padding:8px 10px;font:inherit;background:#fff;color:var(--ink)}textarea{min-height:76px;resize:vertical}
+table.scale{width:100%;border-collapse:collapse;font-size:14px}table.scale th,table.scale td{padding:8px 4px;border-bottom:1px solid var(--line);text-align:center}
+table.scale th:first-child,table.scale td:first-child{text-align:left;width:52%}table.scale thead th{color:var(--muted);font-weight:600;font-size:12px}
+table.scale input{width:20px;height:20px;accent-color:var(--navy);cursor:pointer}
+.task-link{font-size:13px}
+.bar{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);padding:16px 0 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+button.go{background:var(--navy);color:#fff;border:0;border-radius:10px;padding:12px 28px;font:inherit;font-weight:700;cursor:pointer}button.go:disabled{opacity:.6;cursor:wait}
+.msg{font-size:14px}.msg.err{color:var(--err)}.msg.ok{color:var(--ok)}
+.done{text-align:center;padding:40px 16px}.done h2{color:var(--ok)}
+.miss{outline:2px solid var(--err);outline-offset:4px;border-radius:6px}
+@media(max-width:600px){.pair{grid-template-columns:1fr}table.scale th:first-child,table.scale td:first-child{width:46%}}
+</style></head><body>
+<header><div class="in">
+  <h1>손대시 사용자 테스트 설문</h1>
+  <p>안내문을 따라 과제를 해 보신 뒤 제출해 주세요(약 5분). <b>이름·이메일·연락처는 받지 않습니다.</b> 화면 녹화는 선택입니다.<br>
+  <a href="https://github.com/solarjina-geena/M1-3/blob/main/docs/%EC%82%AC%EC%9A%A9%EC%9E%90%ED%85%8C%EC%8A%A4%ED%8A%B8/%ED%85%8C%EC%8A%A4%ED%84%B0_%EC%95%88%EB%82%B4%EB%AC%B8.md" target="_blank" rel="noopener">안내문 열기 ↗</a> ·
+  <a href="./index.html" target="m13dash">대시보드 열기 ↗</a> · <span id="closeInfo">마감 11/8(일) 13:00</span></p>
+</div></header>
+<main id="main"><form id="f" novalidate></form>
+<div class="bar"><button class="go" id="go" type="button">제출하기</button><span class="msg" id="msg"></span></div></main>
+<script>
+/* (2026-11-08 팀장) 구글폼 대신 대시보드 안 설문 — 응답은 개인 DB public.m13_survey_response(이름 없이) */
+const DONE=['완료','도움 받아 완료','못함','건너뜀'],TIME=['1분 이내','1~3분','3~5분','5분 넘음'];
+const B='https://m1-3-imeb3-dashboard.onrender.com';
+const TASKS=[
+ ['t1','과제 1. 9월 IV 생산량 보기','./index.html'],
+ ['t2','과제 2. 대화창 질문으로 LOT 흐름 따라가기','./index.html'],
+ ['t3','과제 3. AI 에게 자유롭게 물어보기','./index.html'],
+ ['t4','과제 4. 공정별 품질 화면에서 답 찾기',null],
+ ['t5','과제 5. 작업일보 입력 (받은 10월 일보로 판독 → 고치기 → 저장)','./manage.html?tab=mixed'],
+];
+const SCALE=[
+ ['s1','원하는 숫자를 찾기 쉬웠다'],['s2','LOT 추적 결과를 믿을 수 있다고 느꼈다'],['s3','AI 대화창 답변이 도움이 됐다'],
+ ['s4','공정별 품질 화면(비전·최종 불량·리워크)이 판단에 도움이 됐다'],['s5','사진 판독 결과를 고치고 저장하기 편했다'],
+ ['s6','손으로 엑셀·전산에 옮겨 적는 것보다 빠를 것 같다'],['s7','현장에서 쓰고 싶다'],
+];
+const e=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const radios=(name,opts,req)=>`<div class="opts" data-name="${name}"${req?' data-req="1"':''}>${opts.map(o=>`<label><input type="radio" name="${name}" value="${e(o)}"> ${e(o)}</label>`).join('')}</div>`;
+const q=(title,inner,req,help)=>`<div class="q"><div class="t">${e(title)}${req?'<span class="req">*</span>':''}</div>${help?`<div class="h">${help}</div>`:''}${inner}</div>`;
+const text=(name,ph)=>`<input type="text" name="${name}" maxlength="300" placeholder="${e(ph||'')}">`;
+const para=(name,ph)=>`<textarea name="${name}" maxlength="2000" placeholder="${e(ph||'')}"></textarea>`;
+let h='';
+h+=`<section class="card"><h2>1. 기본</h2><div class="sub">* 표시는 꼭 골라 주세요</div>`
+ +q('안내문의 동의 내용(이름 없이 집계, 언제든 중단 가능)을 읽고 동의합니다',`<div class="opts" data-name="consent" data-req="1"><label><input type="checkbox" name="consent" value="동의"> 동의합니다</label></div>`,1)
+ +q('테스트 구분',radios('group',['팀원','사내'],1),1)
+ +q('역할',radios('role',['품질','생산','전산 입력','개발·IT','기타'],1),1)
+ +q('사용 기기',radios('device',['PC·노트북','태블릿','휴대폰'],1),1)+`</section>`;
+h+=`<section class="card"><h2>2. 과제 결과</h2><div class="sub">과제마다 완료 여부와 대략 걸린 시간을 골라 주세요</div>`;
+for(const [k,t,link] of TASKS){h+=q(t,`<div class="pair"><div><small>완료 여부 *</small>${radios(k+'_done',DONE,1)}</div><div><small>걸린 시간</small>${radios(k+'_time',TIME)}</div></div>`,1,link?`<a class="task-link" href="${link}" target="m13dash">화면 열기 ↗</a>`:'')}
+h+=q('과제 3: 실제로 한 질문 하나와, 답이 맞았는지',text('t3_question','예) 9월 IV 권선 불량 상위 3개는? — 맞음'))
+ +q('과제 4-1: IV 비전 불량의 가성(실제로는 양품) 비율은 몇 %?',text('t4_1','예) 50%'),0,`<a class="task-link" href="${B}/index.html?proc=BA&view=vision&mode=range&from=2026-09-01&to=2026-10-31" target="m13dash">권선 비전 불량 화면 ↗</a>`)
+ +q('과제 4-2: 9월 IV 최종검사에서 가장 많은 불량 유형은?',text('t4_2'),0,`<a class="task-link" href="${B}/index.html?proc=FINAL_INSPECTION&view=defect&mode=range&from=2026-09-01&to=2026-09-30" target="m13dash">최종검사 불량 유형 화면 ↗</a>`)
+ +q('과제 4-3: 10월에 리워크 투입이 가장 많았던 날짜는?',text('t4_3','예) 10/1'),0,`<a class="task-link" href="${B}/index.html?proc=CA&view=rework&mode=range&from=2026-10-01&to=2026-10-31" target="m13dash">리워크 화면 ↗</a>`)
+ +q('과제 5: 해 본 입력 (여러 개 고르기)',`<div class="opts" data-name="t5_kinds">${['사출·조립 묶음','BS(스티칭)','리워크','최종검사'].map(o=>`<label><input type="checkbox" name="t5_kinds" value="${o}"> ${o}</label>`).join('')}</div>`)
+ +q('과제 5: 배정받은 날짜',text('t5_date','예) 10/13'))
+ +q('과제 5: 고친 칸 수 (대략)',text('t5_fixed','예) 3'))
+ +q('과제 5: 저장 결과',radios('t5_save',['모두 저장·대시보드에서 확인','일부만 저장','저장 실패','저장 안 함']))
+ +q('가장 오래 막힌 과제와 막힌 곳 (오류 문구가 있었다면 그대로)',para('stuck'))+`</section>`;
+h+=`<section class="card"><h2>3. 설문</h2><div class="sub">1 전혀 아니다 · 2 아니다 · 3 보통 · 4 그렇다 · 5 매우 그렇다</div><div class="q" style="border:0"><table class="scale"><thead><tr><th></th>${[1,2,3,4,5].map(n=>`<th>${n}</th>`).join('')}</tr></thead><tbody>`
+ +SCALE.map(([k,t])=>`<tr><td>${e(t)}</td>${[1,2,3,4,5].map(n=>`<td><input type="radio" name="${k}" value="${n}" aria-label="${e(t)} ${n}"></td>`).join('')}</tr>`).join('')+`</tbody></table></div></section>`;
+h+=`<section class="card"><h2>4. 자유 의견</h2>`+q('가장 불편했던 점',para('worst'))+q('꼭 추가됐으면 하는 것',para('wish'))
+ +q('화면 녹화 (선택)',radios('recording',['녹화함 — 진행자에게 따로 보냄','녹화함 — 공유는 어려움','녹화 안 함']))+`</section>`;
+const f=document.getElementById('f');f.innerHTML=h;
+/* 쓰던 내용 임시 보관(이 브라우저에만) */
+const KEY='m13survey-draft';
+const collect=()=>{const o={};for(const el of f.elements){if(!el.name)continue;if(el.type==='radio'){if(el.checked)o[el.name]=el.value}else if(el.type==='checkbox'){if(el.checked)o[el.name]=el.name==='consent'?el.value:[...(o[el.name]?String(o[el.name]).split(', '):[]),el.value].join(', ')}else if(el.value.trim())o[el.name]=el.value.trim()}return o};
+try{const d=JSON.parse(localStorage.getItem(KEY)||'{}');for(const el of f.elements){if(!el.name||!(el.name in d))continue;if(el.type==='radio')el.checked=el.value===d[el.name];else if(el.type==='checkbox')el.checked=String(d[el.name]).split(', ').includes(el.value);else el.value=d[el.name]}}catch(_){}
+f.addEventListener('input',()=>{try{localStorage.setItem(KEY,JSON.stringify(collect()))}catch(_){}});
+const msg=document.getElementById('msg'),go=document.getElementById('go');
+fetch('/api/survey/status').then(r=>r.json()).then(s=>{if(!s.open){go.disabled=true;msg.className='msg err';msg.textContent='설문이 마감되었습니다. 참여해 주셔서 감사합니다.'}}).catch(()=>{});
+go.onclick=async()=>{
+  document.querySelectorAll('.miss').forEach(x=>x.classList.remove('miss'));
+  const a=collect(),miss=[...f.querySelectorAll('[data-req]')].filter(d=>!(d.dataset.name in a));
+  if(miss.length){miss.forEach(d=>d.classList.add('miss'));miss[0].scrollIntoView({behavior:'smooth',block:'center'});msg.className='msg err';msg.textContent='빨간 테두리 문항을 골라 주세요 ('+miss.length+'개)';return}
+  go.disabled=true;msg.className='msg';msg.textContent='제출 중…';
+  try{const r=await fetch('/api/survey',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tester_group:a.group,answers:a})});
+    const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||('오류 '+r.status));
+    try{localStorage.removeItem(KEY)}catch(_){}
+    document.getElementById('main').innerHTML='<div class="card done"><h2>제출되었습니다. 감사합니다!</h2><p>의견은 이름 없이 집계해 서비스 개선과 발표에만 씁니다.</p><p><a href="./index.html">대시보드로 가기</a></p></div>';window.scrollTo(0,0)
+  }catch(err){go.disabled=false;msg.className='msg err';msg.textContent='제출 실패: '+err.message}
+};
+</script></body></html>
