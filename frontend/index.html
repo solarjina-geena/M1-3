@@ -298,8 +298,7 @@ function renderFinalDefects(){
   const q=(d,m,c)=>d.by[m]?.[c]?.qty||0,lines=[];
   for(const m of models){const t3=[...finDefData.defects].filter(d=>q(d,m,CLS)>0).sort((a,b)=>q(b,m,CLS)-q(a,m,CLS)).slice(0,3);if(!t3.length)continue;
    let ln=`<b style="color:${m==='OV'?'#8a6400':COL[m]}">${m}</b> 많은 순: `+t3.map((d,i)=>`${i+1}. ${d.name} <b>${fmt(q(d,m,CLS))}</b>`).join(' · ');
-   const wr=d=>q(d,m,CLS)+q(d,m,'재검'),r1=[...finDefData.defects].sort((a,b)=>wr(b)-wr(a))[0];
-   if(r1&&r1!==t3[0]&&wr(r1)>0)ln+=` <span style="color:#b45309">(재검 포함 1위: ${r1.name} ${fmt(wr(r1))})</span>`;lines.push(ln)}
+   lines.push(ln)}/* (2026-11-08 팀장) 본검사와 재검은 따로 집계 — 합산 표시 없음, 재검은 아래 ② 에서 */
   if(lines.length){top.innerHTML='🏷 '+lines.join('<br>🏷 ')+' <small style="color:#6b7280">— 검사일 기준 · 본검사(2차)</small>';box.append(top)}}
  const val=(d,m)=>{const b=d.by[m]?.[CLS];if(!b)return 0;return finMetric==='ppm'?(b.ppm||0):b.qty};
  let types=finDefData.defects.filter(d=>models.some(m=>(d.by[m]?.[CLS]?.qty||0)>0));
@@ -350,6 +349,12 @@ function renderFinalDefects(){
   const sec=document.createElement('div');sec.style.cssText='margin-top:18px;border-top:1px dashed #d8dee4;padding-top:10px';box.append(sec);
   const hh=document.createElement('div');hh.className='vis-h';hh.textContent='② 재검만 — 불량 유형별(왼쪽) · LOT 별 재검 검사수량(오른쪽) · 검사일 기준, 본검사 합계와 따로';sec.append(hh);
   if(!window.__reinspAll&&!window.__reinspLoading){window.__reinspLoading=true;fetch(API_BASE+'/api/reinspections?limit=2000',{cache:'no-store'}).then(r=>r.ok?r.json():[]).then(d=>{window.__reinspAll=Array.isArray(d)?d:[];window.__reinspLoading=false;if(processFilter==='FINAL_INSPECTION'&&finView==='defect')drawCurrentGraph()}).catch(()=>{window.__reinspAll=[];window.__reinspLoading=false})}
+  {const rs=document.createElement('div');rs.className='fd-sum';const rqm=(m)=>finDefData.defects.reduce((s,d)=>s+(d.by[m]?.['재검']?.qty||0),0),rpm=(m)=>finDefData.defects.reduce((s,d)=>s+(d.by[m]?.['재검']?.qty_ppm||0),0);
+   for(const m of models){const i=(finDefData.inspected?.[m]?.['재검'])||{qty:0,runs:0};const dq=rqm(m);if(!i.runs&&!dq)continue;const ppm=i.qty?Math.round(rpm(m)*1e6/i.qty):null;
+    const c=document.createElement('div');c.className='fd-card';c.style.borderLeftColor='#b91c1c';c.innerHTML=`<b style="color:${m==='OV'?'#8a6400':COL[m]}">${m}</b> 재검 ${fmt(i.qty)} EA · 불량 ${fmt(dq)} EA <b>(${ppm==null?'—':fmt(ppm)+' PPM'})</b><br><small>재검 ${fmt(i.runs)}건 · 본검사와 따로 집계</small>`;rs.append(c)}
+   if(rs.childElementCount)sec.append(rs);
+   const rl=[];for(const m of models){const t3=[...finDefData.defects].filter(d=>(d.by[m]?.['재검']?.qty||0)>0).sort((a,b)=>(b.by[m]['재검'].qty)-(a.by[m]['재검'].qty)).slice(0,3);if(t3.length)rl.push(`<b style="color:${m==='OV'?'#8a6400':COL[m]}">${m}</b> 재검 많은 순: `+t3.map((d,i)=>`${i+1}. ${d.name} <b>${fmt(d.by[m]['재검'].qty)}</b>`).join(' · '))}
+   if(rl.length){const tl=document.createElement('div');tl.className='fd-note';tl.style.cssText='margin:6px 0 2px;font-size:12.5px;color:#374151';tl.innerHTML='🏷 '+rl.join('<br>🏷 ')+' <small style="color:#6b7280">— 재검만(본검사 합계와 별도)</small>';sec.append(tl)}}
   const row=document.createElement('div');row.style.cssText='display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap';sec.append(row);
   const left=document.createElement('div');left.style.cssText='flex:1 1 300px;min-width:0';const right=document.createElement('div');right.style.cssText='flex:0 0 430px;max-width:100%;max-height:380px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px';row.append(left,right);
   const rq=(d,m)=>d.by[m]?.['재검']?.qty||0,rsum=d=>models.reduce((s,m)=>s+rq(d,m),0),rt=finDefData.defects.filter(d=>rsum(d)>0).sort((a,b)=>rsum(b)-rsum(a)).slice(0,15);
