@@ -1038,6 +1038,23 @@ const b=document.getElementById('compactToggle');if(!b)return;
 let on;try{const v=localStorage.getItem('m13compact');on=v==null?window.innerHeight<=800:v==='1'}catch(_){on=window.innerHeight<=800}
 const apply=()=>{document.body.classList.toggle('compact',on);b.classList.toggle('on',on);b.textContent=on?'기본 화면':'작은 화면';try{window.dispatchEvent(new Event('resize'))}catch(_){}};
 b.onclick=()=>{on=!on;try{localStorage.setItem('m13compact',on?'1':'0')}catch(_){}apply()};apply();
+})()</script><script>/* (2026-11-08 팀장) 모든 대시보드 화면은 여는 모니터 높이에 정확히 맞춘다 — 페이지 전체 세로 이동 막대 없이, 넘치는 내용은 그래프 칸 안에서만 스크롤.
+   고정 계산(100vh - 260px)은 위쪽 줄 높이·글자 크기(125~150%)에 따라 어긋나므로, 실제 위치를 재서 그래프 칸·AI 창 높이를 정한다. */(()=>{
+const fit=()=>{try{
+  if(window.innerWidth<1051)return;/* 좁은 화면(세로 배치)은 기존 규칙 */
+  const card=document.querySelector('.genealogy-card'),agent=document.querySelector('aside.agent'),foot=document.querySelector('footer');if(!card)return;
+  const top=card.getBoundingClientRect().top+window.scrollY;
+  const fs=foot&&getComputedStyle(foot).display!=='none'?foot.offsetHeight:0;
+  const h=Math.max(380,Math.floor(window.innerHeight-top-fs-12));
+  card.style.height=h+'px';card.style.minHeight='0';
+  if(agent){agent.style.position='relative';agent.style.top='0';agent.style.height=h+'px';agent.style.minHeight='0'}
+  {const over=document.documentElement.scrollHeight-window.innerHeight;if(over>0){const h2=Math.max(380,h-over);card.style.height=h2+'px';if(agent)agent.style.height=h2+'px'}}/* 아래 여백·설명 줄까지 재서 한 번 더 맞춤 */
+  document.documentElement.style.overflowY=(document.documentElement.scrollHeight>window.innerHeight+1)?'':'hidden';
+ }catch(e){console.warn('[fit]',e)}};
+let t=null;const later=()=>{clearTimeout(t);t=setTimeout(fit,60)};
+window.addEventListener('resize',later);window.addEventListener('load',fit);document.addEventListener('click',()=>setTimeout(fit,30),true);
+new MutationObserver(later).observe(document.body,{attributes:true,attributeFilter:['class']});
+fit();setTimeout(fit,300);setTimeout(fit,1500);
 })()</script></body></html>
 
 
