@@ -110,6 +110,12 @@ _CA_DEFECT_ALIAS = {
     # (2026-11-08 팀장 확인) 양식 줄은 '내전압 불량'과 '내경 불량' 둘뿐 — '내경압 불량'은 판독 지시문 목록 오류로 생긴 오독(원본 10/15 = 내전압 2)
     "내경압 불량": "내전압 불량", "Lower Case 흡입불량": "Lower Case 혼입불량",
 }
+# (2026-11-08) 스티칭(BS) 일보 불량 칸: 위치도 / 전장(길이) / 핀찍힘 / 기타 — 전사본 영어 코드·줄임말을 같은 칸으로 묶어 표시(DB 원문 그대로)
+_BS_DEFECT_ALIAS = {
+    "location": "위치도", "position": "위치도", "위치": "위치도", "위치도불량": "위치도", "OV 위치도": "위치도",
+    "length": "전장", "electrical": "전장", "전장불량": "전장",
+    "terminal": "단자",
+}
 
 
 @router.get("/defects/by-model")
@@ -130,7 +136,8 @@ def defects_by_model(process: str = Query(..., pattern="^IMEB3_(STITCHING|WINDIN
             q = r.get("qty") or 0
             if q <= 0:
                 continue
-            nm = _CA_DEFECT_ALIAS.get(r["defect_name"], r["defect_name"]) if process == "IMEB3_CA_PRESS" else r["defect_name"]
+            alias = {"IMEB3_CA_PRESS": _CA_DEFECT_ALIAS, "IMEB3_STITCHING": _BS_DEFECT_ALIAS}.get(process, {})
+            nm = alias.get(r["defect_name"], r["defect_name"])
             a = agg.setdefault(nm, {"name": nm, "by": {}, "raw": set()})
             a["raw"].add(r["defect_name"])
             a["by"][r["model_code"]] = a["by"].get(r["model_code"], 0) + q

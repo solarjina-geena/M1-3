@@ -591,9 +591,9 @@ function renderProcessDaily(){
  const n=document.createElement('p');n.className='fd-note';n.textContent=`표시 구간 ${axisStart||'처음'} ~ ${axisEnd||'끝'} · 막대 = 생산 수량, 흰 점과 점선 = 불량률(PPM, 오른쪽 눈금), 점 위 숫자 = 불량 수량(EA) · 막대·점에 마우스를 올리면 그날 값`;box.append(n);
 
  /* (2026-11-08 팀장) CA 코일아세이: 일별 생산·불량 아래 '불량 유형별' 막대(모델 색, 많은 순) */
- if(processFilter==='CA'){const k2=code+'|'+(axisStart||'')+'|'+(axisEnd||'');
-  if(window.__pdKey!==k2){window.__pdKey=k2;window.__pdData=null;fetch(API_BASE+'/api/defects/by-model?'+new URLSearchParams({process:code,from:axisStart||'',to:axisEnd||''}),{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(Error('HTTP '+r.status))).then(d=>{if(window.__pdKey===k2){window.__pdData=d;if(processFilter==='CA'&&caView==='daily')drawCurrentGraph()}}).catch(e=>{if(window.__pdKey===k2){window.__pdData={error:e.message}}})}
-  const h2=document.createElement('div');h2.className='vis-h';h2.style.marginTop='18px';h2.textContent='② 불량 유형별 수량 — 압입(CA) 작업일보 불량(리워크 제외), 많은 순';box.append(h2);
+/* (2026-11-08) BS 스티칭에도 같은 막대 */ if(processFilter==='CA'||processFilter==='STITCHING'){const k2=code+'|'+(axisStart||'')+'|'+(axisEnd||'');
+  if(window.__pdKey!==k2){window.__pdKey=k2;window.__pdData=null;fetch(API_BASE+'/api/defects/by-model?'+new URLSearchParams({process:code,from:axisStart||'',to:axisEnd||''}),{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(Error('HTTP '+r.status))).then(d=>{if(window.__pdKey===k2){window.__pdData=d;if((processFilter==='CA'&&caView==='daily')||(processFilter==='STITCHING'&&bsView==='daily'))drawCurrentGraph()}}).catch(e=>{if(window.__pdKey===k2){window.__pdData={error:e.message}}})}
+  const h2=document.createElement('div');h2.className='vis-h';h2.style.marginTop='18px';h2.textContent=processFilter==='CA'?'② 불량 유형별 수량 — 압입(CA) 작업일보 불량(리워크 제외), 많은 순':'② 불량 유형별 수량 — 스티칭(BS) 작업일보 불량, 많은 순';box.append(h2);
   const pd=window.__pdData;
   if(!pd){const p=document.createElement('p');p.textContent='불량 유형을 불러오는 중…';box.append(p)}
   else if(pd.error){const p=document.createElement('p');p.textContent='조회 실패: '+pd.error;box.append(p)}
