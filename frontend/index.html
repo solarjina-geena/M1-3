@@ -345,6 +345,33 @@ function renderFinalDefects(){
  const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(svg);box.append(sc);
  const notes=[`검사일 ${axisStart||'처음'} ~ ${axisEnd||'끝'} 기준(제품 LOT 별 아님) · 본검사(2차)만 · 1차검사(훈련)·재검사 제외`,'불량명은 같은 불량의 다른 표기(예: marking·Marking 불량)를 묶어 표시 — 이름에 마우스를 올리면 원문 표기',more>0?`상위 ${LIMIT}개만 표시(나머지 ${more}개 유형)`:'',finDefData.not_imeb3_qty?`iMEB3 에 없는 불량(탈피·납조) ${fmt(finDefData.not_imeb3_qty)} EA 는 다른 제품 칸을 읽은 것이라 제외`:'',finDefData.null_qty_findings?`수량이 빈 불량 줄 ${finDefData.null_qty_findings}건은 막대에서 제외(1차·재검 포함 전체)`:'',finDefData.qty_without_inspected?`검사수량이 빈 검사의 불량 ${fmt(finDefData.qty_without_inspected)} EA 는 막대에는 넣고 PPM 에서는 제외`:''].filter(Boolean);
  const n=document.createElement('p');n.className='fd-note';n.textContent=notes.join(' · ');box.append(n);
+ /* (2026-11-08 팀장) ② 재검만 따로: 왼쪽 = 재검 불량 유형별 막대(모델 색), 오른쪽 = LOT 별 재검 검사수량(LOT 날짜 빠른 순, 위→아래) */
+ {const ec=v=>String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const sec=document.createElement('div');sec.style.cssText='margin-top:18px;border-top:1px dashed #d8dee4;padding-top:10px';box.append(sec);
+  const hh=document.createElement('div');hh.className='vis-h';hh.textContent='② 재검만 — 불량 유형별(왼쪽) · LOT 별 재검 검사수량(오른쪽) · 검사일 기준, 본검사 합계와 따로';sec.append(hh);
+  if(!window.__reinspAll&&!window.__reinspLoading){window.__reinspLoading=true;fetch(API_BASE+'/api/reinspections?limit=2000',{cache:'no-store'}).then(r=>r.ok?r.json():[]).then(d=>{window.__reinspAll=Array.isArray(d)?d:[];window.__reinspLoading=false;if(processFilter==='FINAL_INSPECTION'&&finView==='defect')drawCurrentGraph()}).catch(()=>{window.__reinspAll=[];window.__reinspLoading=false})}
+  const row=document.createElement('div');row.style.cssText='display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap';sec.append(row);
+  const left=document.createElement('div');left.style.cssText='flex:1 1 300px;min-width:0';const right=document.createElement('div');right.style.cssText='flex:0 0 430px;max-width:100%;max-height:380px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px';row.append(left,right);
+  const rq=(d,m)=>d.by[m]?.['재검']?.qty||0,rsum=d=>models.reduce((s,m)=>s+rq(d,m),0),rt=finDefData.defects.filter(d=>rsum(d)>0).sort((a,b)=>rsum(b)-rsum(a)).slice(0,15);
+  if(!rt.length){left.innerHTML='<p class="fd-note">표시 구간에 재검 불량 기록이 없습니다.</p>'}
+  else{const W2=Math.max(300,left.clientWidth||420),H2=270,L2=46,T2=22,B2=190,gw2=Math.max(46,(W2-L2-12)/rt.length),ms=models.filter(m=>rt.some(d=>rq(d,m))),bw2=Math.min(18,(gw2-10)/Math.max(1,ms.length)),w2=Math.max(W2,L2+rt.length*gw2+12),mx=Math.max(1,...rt.flatMap(d=>ms.map(m=>rq(d,m))));
+   const s2=document.createElementNS(NS,'svg');s2.setAttribute('width',w2);s2.setAttribute('height',H2);s2.setAttribute('viewBox',`0 0 ${w2} ${H2}`);s2.style.cssText=`display:block;width:${w2}px;height:${H2}px;min-height:0;max-height:none`;
+   const e2=(t,a,x)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;s2.append(e);return e};
+   for(let k=0;k<=4;k++){const y=B2-(B2-T2)*k/4;e2('line',{x1:L2,x2:w2-6,y1:y,y2:y,stroke:'#eef0f2'});e2('text',{x:L2-6,y:y+4,'text-anchor':'end','font-size':10,fill:'#6b7280'},fmt(Math.round(mx*k/4)))}
+   rt.forEach((d,i)=>{const gx=L2+i*gw2+gw2/2,x0=gx-ms.length*bw2/2;ms.forEach((m,j)=>{const v=rq(d,m);if(!v)return;const hh2=(B2-T2)*v/mx,x=x0+j*bw2;const r=e2('rect',{x,y:B2-hh2,width:bw2-2,height:Math.max(2,hh2),rx:2,fill:COL[m],'fill-opacity':0.8,stroke:'#b91c1c','stroke-width':0.8});const tt=document.createElementNS(NS,'title');tt.textContent=`${m} 재검 ${d.name}: ${fmt(v)} EA`;r.append(tt);e2('text',{x:x+(bw2-2)/2,y:B2-hh2-3,'text-anchor':'middle','font-size':9.5,'font-weight':600,fill:'#374151'},fmt(v))});
+    e2('text',{x:gx-2,y:B2+13,'text-anchor':'end','font-size':10.5,'font-weight':600,fill:'#1f2937',transform:`rotate(-35 ${gx-2} ${B2+13})`},d.name)});
+   e2('line',{x1:L2,x2:w2-6,y1:B2,y2:B2,stroke:'#9ca3af'});const sc2=document.createElement('div');sc2.style.cssText='overflow-x:auto';sc2.append(s2);left.append(sc2)}
+  const all=window.__reinspAll;
+  if(!all){right.textContent='재검 LOT 을 불러오는 중…'}
+  else{const inR=x=>(!axisStart||x.inspection_date>=axisStart)&&(!axisEnd||x.inspection_date<=axisEnd)&&models.includes(x.model_code);const agg=new Map();
+   for(const r of all.filter(inR)){for(const l of (r.lots||[])){const k=r.model_code+'|'+(l.ca_lot_code||l.lot_code_raw||'?');const a=agg.get(k)||{m:r.model_code,ca:l.ca_lot_code,mk:l.lot_code_raw,qty:0,unk:0,runs:0,dates:new Set()};if(l.lot_qty!=null)a.qty+=l.lot_qty;else a.unk++;a.runs++;a.dates.add(String(r.inspection_date).slice(5).replace('-','/'));agg.set(k,a)}}
+   const lotDate=a=>{const c=String(a.ca||'');return /^\d{6}/.test(c)?'20'+c.slice(0,2)+'-'+c.slice(2,4)+'-'+c.slice(4,6):'9999'};
+   const rows=[...agg.values()].sort((a,b)=>lotDate(a).localeCompare(lotDate(b))||a.m.localeCompare(b.m));
+   if(!rows.length){right.innerHTML='<p class="fd-note">표시 구간에 재검한 LOT 이 없습니다.</p>'}
+   else{const TX={IV:'#111923',OV:'#8a6400',HSV:'#1d5fb0'};let t='<table class="rw-table" style="font-size:12px;width:100%"><thead><tr><th style="text-align:left">LOT (생산일)</th><th>모델</th><th style="text-align:right">재검 검사수량</th><th>재검일</th></tr></thead><tbody>';
+    for(const a of rows){const ld=lotDate(a);t+=`<tr><td style="text-align:left">${ec(a.mk||'')}${a.ca?` <small style="color:#6b7280">${ec(a.ca)}${ld!=='9999'?' · '+ld.slice(5).replace('-','/'):''}</small>`:' <small style="color:#b45309">CA LOT 미연결</small>'}</td><td style="color:${TX[a.m]||'#111'};font-weight:600">${a.m}</td><td style="text-align:right;font-weight:600">${a.qty?fmt(a.qty)+' EA':'—'}${a.unk&&a.qty?' <small>+?</small>':''}</td><td><small>${[...a.dates].join(', ')}</small></td></tr>`}
+    t+='</tbody></table>';right.innerHTML=t;const tot=rows.reduce((s,a)=>s+a.qty,0);const nn=document.createElement('p');nn.className='fd-note';nn.textContent=`재검 LOT ${rows.length}개 · 검사수량 합 ${fmt(tot)} EA · LOT 날짜 빠른 순(위→아래) · 같은 LOT 을 여러 번 재검하면 합산`;right.append(nn)}}
+ }
 }
 // ---- 전체 흐름 · LOT 사슬 그래프 (2026-11-07 팀장): "9/10 사출 LOT 흐름"처럼 날짜+공정으로 물으면 그날 그 공정 LOT 들이
 //      다음 공정(스티칭→권선 BA→압입 CA)에서 언제 쓰였고 최종검사는 언제였는지. DB LOT 연결(/api/lot-flow, /api/lot/{lot})만 그린다(추정 없음).
