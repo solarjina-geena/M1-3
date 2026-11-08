@@ -168,7 +168,7 @@ main>.agent{
 /* (2026-11-07) 윈도우 글자 크기 150%(화면 폭 1,280 근처)에서 공정 단추 줄이 잘리지 않게: 단추가 폭에 맞춰 줄어듦 */
 @media (max-width:1400px) and (min-width:1051px){.step{min-width:0;padding:6px 8px}.step b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.step small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 </style><script src="auth-store.js"></script>
-<style>/* (2026-11-08 사용자 테스트 의견: 현장 작은 모니터) 작은 화면 모드 — 제목·아래 설명 숨김, 그래프 높이 확대 */body.compact header,body.compact footer,body.compact .flow-title span{display:none}body.compact .genealogy-card{height:calc(100vh - 175px)}body .pos-tiles .pos-tile:first-child{border:2px solid #f3c2c2;background:#fffafa}body .pos-tiles .pos-tile:first-child b{font-size:32px;line-height:1.15}.pos-tile b.okv{color:#0ca30c}#compactToggle.on{background:#0f2a44;color:#fff;border-color:#0f2a44}</style></head><body>
+<style>/* (2026-11-08 사용자 테스트 의견: 현장 작은 모니터) 작은 화면 모드 — 제목·아래 설명 숨김, 그래프 높이 확대 *//* 작은 화면: 이름은 남기고 머리글을 한 줄로 얇게 */body.compact header{height:30px}body.compact header .eyebrow,body.compact header .status{display:none}body.compact header h1{font-size:17px;margin:0}body.compact footer,body.compact .flow-title span{display:none}body.compact .genealogy-card{height:calc(100vh - 175px)}body .pos-tiles .pos-tile:first-child{border:2px solid #f3c2c2;background:#fffafa}body .pos-tiles .pos-tile:first-child b{font-size:32px;line-height:1.15}.pos-tile b.okv{color:#0ca30c}#compactToggle.on{background:#0f2a44;color:#fff;border-color:#0f2a44}</style></head><body>
 <div class="app">
 <header><div><span class="eyebrow">MANUFACTURING INTELLIGENCE</span><h1>손대시 / EASY DASH</h1></div><div class="status"><i></i> Evidence 기반</div></header>
 <section class="flow"><div class="flow-title"><b>제조 공정 흐름</b><span>단계를 누르면 그래프가 좁혀집니다</span></div><button class="step" data-proc="ALL"><small>00</small><b>전체 흐름</b><span>원소재부터 검사·출하까지</span></button><i>⇄</i><button class="step" data-proc="INJECTION"><small>01</small><b>BB / 사출</b><span>보빈·케이스 성형</span></button><i>⇄</i><button class="step" data-proc="STITCHING"><small>02</small><b>BS / 스티칭</b><span>리드핀 삽입</span></button><i>⇄</i><button class="step" data-proc="BA"><small>03</small><b>BA / 보빈아세이</b><span>권선·용접</span></button><i>⇄</i><button class="step" data-proc="CA"><small>04</small><b>CA / 코일아세이</b><span>코일 조립</span></button><i>⇄</i><button class="step" data-proc="FINAL_INSPECTION"><small>05</small><b>최종검사</b><span>검사·합격수량</span></button><i>⇄</i><button class="step" data-proc="SHIPMENT"><small>06</small><b>출하</b><span>출하수량</span></button></section>
@@ -179,7 +179,7 @@ main>.agent{
   <h2 id="viewTitle">공정 흐름 및 LOT 추적</h2>
   <div class="dashboard-actions">
     <button id="layoutToggle" class="manage-shortcut" type="button">가로 보기로 전환</button>
-    <a class="manage-shortcut" href="./tables.html">표·그래프</a>
+    <a class="manage-shortcut" href="./tables.html" hidden>표·그래프</a><!-- (2026-11-08 팀장) 숨김 — 관리 화면 '관리자 전용' 줄로 옮김 -->
     <!-- (2026-11-08 팀장) 입력은 '일보 입력' 단추 하나로 바로 보이게. OCR 입력 앱(팀) 연결은 관리 화면에만 -->
     <a class="manage-shortcut entry-btn" id="manageLink" href="./manage.html?tab=mixed" target="m13manage" rel="noopener" title="작업일보 입력·관리 화면(로그인)">✍ 일보 입력 🔒</a>
     <a class="manage-shortcut survey-btn" href="./survey.html" target="m13survey" rel="noopener" title="사용자 테스트 설문(로그인 없음)">📝 설문</a>
@@ -1035,9 +1035,9 @@ restoreLocalDashboard();(function applyUrlScope(){try{const q=new URLSearchParam
 </script><script src="judgment.js"></script>
 <script>/* (2026-11-08) 작은 화면 모드: 단추로 켜고 끔(브라우저에 기억), 처음엔 화면 높이 800px 이하이면 자동으로 켬 */(()=>{
 const b=document.getElementById('compactToggle');if(!b)return;
-let on;try{const v=localStorage.getItem('m13compact');on=v==null?window.innerHeight<=800:v==='1'}catch(_){on=window.innerHeight<=800}
-const apply=()=>{document.body.classList.toggle('compact',on);b.classList.toggle('on',on);b.textContent=on?'기본 화면':'작은 화면';try{window.dispatchEvent(new Event('resize'))}catch(_){}};
-b.onclick=()=>{on=!on;try{localStorage.setItem('m13compact',on?'1':'0')}catch(_){}apply()};apply();
+/* (2026-11-08 수정) 자동 켜기 없음 — 화면은 모니터 높이에 맞추는 기능이 따로 있으므로 기본 화면이 기본, 단추로만 켬 */let on=false;try{on=localStorage.getItem('m13compact2')==='1'}catch(_){}
+const apply=()=>{document.body.classList.toggle('compact',on);b.classList.toggle('on',on);b.textContent=on?'작은 화면 ✓':'작은 화면';b.title=on?'작은 화면 켜짐 — 누르면 기본 화면':'작은 모니터용: 머리글을 얇게, 아래 설명 줄을 숨겨 그래프를 넓게';try{window.dispatchEvent(new Event('resize'))}catch(_){}};
+b.onclick=()=>{on=!on;try{localStorage.setItem('m13compact2',on?'1':'0')}catch(_){}apply()};apply();
 })()</script><script>/* (2026-11-08 팀장) 모든 대시보드 화면은 여는 모니터 높이에 정확히 맞춘다 — 페이지 전체 세로 이동 막대 없이, 넘치는 내용은 그래프 칸 안에서만 스크롤.
    고정 계산(100vh - 260px)은 위쪽 줄 높이·글자 크기(125~150%)에 따라 어긋나므로, 실제 위치를 재서 그래프 칸·AI 창 높이를 정한다. */(()=>{
 const fit=()=>{try{

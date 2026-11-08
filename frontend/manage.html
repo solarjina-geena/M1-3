@@ -311,14 +311,29 @@ const load=async()=>{const m=document.getElementById('svMsg'),o=document.getElem
    +'<td>'+e(a.t3_question)+'</td><td>'+e(a.t4_1)+'</td><td>'+e(a.t4_2)+'</td><td>'+e(a.t4_3)+'</td><td>'+e([a.t5_date,a.t5_kinds,a.t5_fixed&&('고친 칸 '+a.t5_fixed),a.t5_save].filter(Boolean).join(' · '))+'</td><td style="min-width:180px">'+e(a.stuck)+'</td><td style="min-width:180px">'+e(a.worst)+'</td><td style="min-width:180px">'+e(a.wish)+'</td><td>'+e(a.recording)+'</td></tr>'}).join('')+'</tbody></table></div>';
   o.innerHTML=h}catch(err){m.textContent='불러오기 실패: '+err.message}};
 document.getElementById('svGo').onclick=load;document.querySelector('#tabs [data-v="survey"]').addEventListener('click',load);
-})()</script><script>/* (2026-11-08 팀장) 테스터가 헷갈리지 않게: 직접 입력·엑셀·CSV 탭은 숨김(코드는 그대로),
-   테스트 계정(@m13-test.example)으로 로그인하면 ①~⑧ 입력 탭만 보이게 */(()=>{
-const ADMIN_ONLY=['gaps','confirm','crud','aicalls','survey'],ALWAYS_HIDDEN=['form','file'];
-const apply=()=>{let em='';try{em=(JSON.parse((window.m13AuthStore&&m13AuthStore.getItem('m13auth'))||'null')||{}).email||''}catch(_){}
- const tester=/@m13-test\.example$/i.test(em);
- document.querySelectorAll('#tabs button').forEach(b=>{const v=b.dataset.v;if(ALWAYS_HIDDEN.includes(v))b.hidden=true;else if(ADMIN_ONLY.includes(v))b.hidden=tester});
- const sep=document.getElementById('tabSep');if(sep)sep.hidden=tester;
- const on=document.querySelector('#tabs button.on');if(on&&on.hidden)document.querySelector('#tabs [data-t="mixed"]')?.click()};
+})()</script><script>/* (2026-11-08 팀장) 관리 화면 정리: 공정 순서 ①~⑧ 입력 탭만 기본으로 보이고,
+   나머지(작업일보 직접 입력·엑셀·CSV·사슬 보완·연결 확인·CRUD 이력·판독 기록·설문 결과·표·그래프·팀 OCR 앱·가로/세로 보기)는
+   '관리자 전용' 한 줄로 모아 팀장 계정(테스트 계정이 아닌 로그인, 또는 관리자 토큰)에게만 보인다. 배포 화면·테스터에게는 숨김(코드는 그대로). */(()=>{
+const ADMIN=['form','file','gaps','confirm','crud','aicalls','survey'];
+const nav=document.getElementById('tabs');if(!nav)return;
+/* 구분 막대 자리를 '관리자 전용' 줄 시작으로 */
+let row=document.getElementById('adminRow');
+if(!row){row=document.createElement('span');row.id='adminRow';row.textContent='🔐 관리자 전용';
+ row.style.cssText='flex-basis:100%;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#8a6400;padding:6px 4px 0;border-top:1px dashed #d8dee4;margin-top:4px';
+ const sep=document.getElementById('tabSep');if(sep)sep.replaceWith(row);else nav.append(row)}
+/* 관리자 탭 단추를 그 줄 뒤로 모으기 */
+for(const v of ADMIN){const b=nav.querySelector(`button[data-v="${v}"]`);if(b){b.classList.add('adm');nav.append(b)}}
+/* 위쪽 머리글의 링크와 표·그래프도 같은 줄로 */
+const mk=(href,txt,id,tgt)=>{const a=document.createElement('a');a.href=href;a.textContent=txt;a.className='adm adm-link';if(id)a.id=id;a.target=tgt||'_blank';a.rel='noopener';a.style.cssText='align-self:center;font-size:13px;padding:8px 10px';return a};
+const ocr=document.getElementById('teamOcrLink');if(ocr){ocr.classList.add('adm','adm-link');ocr.style.cssText='align-self:center;font-size:13px;padding:8px 10px';nav.append(ocr)}
+const lay=[...document.querySelectorAll('header a')].find(a=>/layout=1/.test(a.getAttribute('href')||''));if(lay){lay.classList.add('adm','adm-link');lay.style.cssText='align-self:center;font-size:13px;padding:8px 10px';nav.append(lay)}
+nav.append(mk('tables.html','표·그래프 ↗','tablesLink','m13tables'));
+const isAdmin=()=>{let em='';try{em=(JSON.parse((window.m13AuthStore&&m13AuthStore.getItem('m13auth'))||'null')||{}).email||''}catch(_){}
+ if(em)return !/@m13-test\.example$/i.test(em);
+ try{return !!(sessionStorage.getItem('m13token')||localStorage.getItem('m13token'))}catch(_){return false}};
+const apply=()=>{const ad=isAdmin();row.hidden=!ad;row.style.display=ad?'flex':'none';
+ nav.querySelectorAll('.adm').forEach(e=>{if(e.id==='teamOcrLink'&&!e.getAttribute('href').startsWith('http')){e.hidden=true;return}e.hidden=!ad});
+ const on=nav.querySelector('button.on');if(on&&on.hidden)nav.querySelector('[data-t="mixed"]')?.click()};
 apply();setInterval(apply,1500);
 })()</script><script>/* (2026-11-08 사용자 테스트) 파일 고르는 창에서 파일이 안 보인다는 신고 → 종류 거름(accept)을 풀고, 고른 뒤에 알려 준다 */(()=>{
 const OK=/\.(pdf|jpe?g|png|webp)$/i;
