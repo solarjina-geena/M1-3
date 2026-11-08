@@ -207,8 +207,8 @@ async def extract_from_image(data: bytes, media_type: str, filename: str, kind: 
         # 조립 일보의 불량 항목 줄은 양식에 인쇄된 고정 이름(팀장 확인 2026-11-07) — 같은 불량이 여러 표기로 쌓이지 않게 이 표기 그대로
         hint += ("\n조립 일보(쪽)라면 불량 이름은 양식에 인쇄된 줄 이름을 아래 표기 그대로 씁니다(띄어쓰기·괄호 포함). 목록에 없는 손글씨 추가 항목만 적힌 그대로.\n"
                  "- 권선(BA): 용접 불량 / 비전1차(미용접,이탈,여선) / 비전2차(권선정열,Post파손) / 비전3차(와이어데미지) / Wire 끊어짐 / Set up 불량\n"
-                 "- 압입(CA): Upper Case 공급 / Bobbin Ass'y 공급 / Lower Case 흡입불량 / Lower Case 조립불량 / 깊이불량 / 내경 불량 / 내경압 불량 / "
-                 "내전압 불량 / 저항불량 / 절연저항 불량 / 마킹 불량 / 콘텐 불량\n"
+                 "- 압입(CA): Upper Case 공급 / Bobbin Ass'y 공급 / Lower Case 혼입불량 / 깊이불량 / 내전압 불량 / 저항불량 / "
+                 "절연저항 불량 / 내경 불량 / 마킹 불량  (양식 인쇄 순서. '내전압'(전기)과 '내경'(치수)은 다른 줄이고, '내경압'이라는 줄은 없음)\n"
                  "작업자 이름은 근무 현황 칸에 적힌 그대로 읽습니다(같은 사람이 날마다 반복되는 경우가 많음).")
     hint += _known_workers_hint(kind)
     if not settings.anthropic_key:
