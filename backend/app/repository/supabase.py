@@ -257,6 +257,33 @@ class SupabaseRepository(Repository):
                         a["position_rework"] = a.get("position_rework", 0) + r["qty"]
             for a in agg.values():
                 a["defects"] = max(0, a["defects"])
+        if process == "IMEB3_WINDING":
+            # (2026-11-08 팀장) BA 불량률은 진성만: 작업일보의 비전 1·2·3차(설비가 걸러낸 수량, 가성 섞임)는 빼고,
+            # 비전 가성불량 조치 엑셀에서 사람이 확인한 진성(TRUE_DEFECT)을 더한다. 작업일보의 용접·Set up·Wire 끊어짐 등은 그대로.
+            import re as _re
+            pp: dict[str, Any] = {"process_code": "eq.IMEB3_WINDING"}
+            if model:
+                pp["model_code"] = f"eq.{model}"
+            _date_filter(pp, "the_date", date_from, date_to)
+            is_vis = lambda n: bool(_re.search(r"vision|비전", str(n or ""), _re.I))
+            for r in self.c.select("m13_defect_by_type", pp, limit=100000):
+                if is_vis(r.get("defect_name")) and (r.get("qty") or 0) > 0:
+                    a = agg.get((str(r["the_date"])[:10], r["model_code"]))
+                    if a is not None:
+                        a["defects"] -= r["qty"]
+                        a["vision_reject"] = a.get("vision_reject", 0) + r["qty"]
+            vp: dict[str, Any] = {"finding_class": "eq.TRUE_DEFECT"}
+            if model:
+                vp["model_code"] = f"eq.{model}"
+            _date_filter(vp, "check_date", date_from, date_to)
+            for r in self.c.select("m13_vision_check_rows", vp, limit=100000):
+                q = r.get("quantity") or 0
+                a = agg.get((str(r["check_date"])[:10], r["model_code"]))
+                if a is not None and q > 0:
+                    a["defects"] += q
+                    a["vision_true"] = a.get("vision_true", 0) + q
+            for a in agg.values():
+                a["defects"] = max(0, a["defects"])
         out = []
         for a in sorted(agg.values(), key=lambda a: (a["date"], a["model"])):
             a["shifts"] = sorted(a["shifts"])

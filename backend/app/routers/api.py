@@ -117,10 +117,10 @@ _BS_DEFECT_ALIAS = {
     "terminal": "단자",
 }
 # (2026-11-08) 권선(BA) 일보 불량 칸(양식 고정 이름) — 전사본 영어 코드·표기 차이를 묶어 표시(DB 원문 그대로)
-_V1, _V2, _V3 = "비전1차(미용접,이탈,여선)", "비전2차(권선정열,Post파손)", "비전3차(와이어데미지)"
+_V1, _V2, _V3 = "비전1차(미용접,이탈,여선)", "비전2차(권선정렬,Post파손)", "비전3차(와이어데미지)"  # (11/8 팀장) 권선정열 → 권선정렬
 _BA_DEFECT_ALIAS = {
     **{k: _V1 for k in ("vision1", "Vision1", "vision1_ng", "BA_vision1", "비전1차", "비전1차(미용접,이물,여선)")},
-    **{k: _V2 for k in ("vision2", "Vision2", "vision2_ng", "BA_vision2", "비전2차", "비전2차(권선정렬,Post 파손)", "비전2차(권선정렬,Post파손)", "비전2차(권선정렬,Post마손)")},
+    **{k: _V2 for k in ("vision2", "Vision2", "vision2_ng", "BA_vision2", "비전2차", "비전2차(권선정렬,Post 파손)", "비전2차(권선정열,Post파손)", "비전2차(권선정렬,Post마손)")},
     **{k: _V3 for k in ("vision3", "vision3_ng", "비전3차", "비전3차(와이어 데미지)")},
     **{k: "용접 불량" for k in ("weld", "weld_ng", "welding", "용접불량", "용접")},
     **{k: "Set up 불량" for k in ("setup", "setup_ng", "setup불량", "SET_UP", "SET-UP", "Set Up 불량")},
@@ -164,10 +164,20 @@ def defects_by_model(process: str = Query(..., pattern="^IMEB3_(STITCHING|WINDIN
             elif date_to:
                 vp["check_date"] = f"lte.{date_to}"
             fb: dict = {}
-            for r in _repo().c.select("m13_vision_check_rows", vp, limit=100000):
+            vrows = _repo().c.select("m13_vision_check_rows", {k: v for k, v in vp.items() if k != "finding_class"}, limit=100000)
+            vt: dict = {}
+            for r in vrows:
                 q = r.get("quantity") or 0
-                if q > 0:
+                if q <= 0:
+                    continue
+                if r.get("finding_class") == "FALSE_REJECT":
                     fb[r["model_code"]] = fb.get(r["model_code"], 0) + q
+                elif r.get("finding_class") == "TRUE_DEFECT":
+                    # (2026-11-08 팀장) 작업일보 고정 유형 외에 사람이 비전 불량을 다시 보며 찾아낸 진성 유형 — 따로 구간으로
+                    nm = r.get("defect_name") or "유형 미기재"
+                    a = vt.setdefault(nm, {"name": nm, "by": {}, "raw": ["비전 가성불량 조치 엑셀(진성)"], "vision": True})
+                    a["by"][r["model_code"]] = a["by"].get(r["model_code"], 0) + q
+            out.extend(sorted(vt.values(), key=lambda a: -sum(a["by"].values())))
             if fb:
                 out.append({"name": "가성 → 리워크 대상", "by": fb, "raw": ["비전 가성불량 조치 엑셀(FALSE_REJECT)"], "rework": True})
         return out

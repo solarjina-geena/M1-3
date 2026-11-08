@@ -14,7 +14,7 @@
     IMEB3_WINDING: map([
       ['용접 불량', ['용접', '용접불량', 'weld', 'welding', 'weld_ng']],
       ['비전 1차 불량', ['비전1차', '비전1차(미용접,이탈,여선)', 'vision1', 'vision1_ng', 'BA_vision1']],
-      ['비전 2차 불량', ['비전2차', '비전2차(권선정열,Post파손)', 'vision2', 'vision2_ng', 'BA_vision2']],
+      ['비전 2차 불량', ['비전2차', '비전2차(권선정렬,Post파손)', '비전2차(권선정열,Post파손)', 'vision2', 'vision2_ng', 'BA_vision2']],
       ['비전 3차 불량', ['비전3차', '비전3차(와이어데미지)', 'vision3', 'vision3_ng']],
       ['셋업 불량', ['setup', 'setup불량', 'Set Up 불량', 'setup_ng', 'SET_UP', 'SET-UP']],
       ['와이어 끊어짐', ['Wire 끊어짐', 'wire_break', 'wire_break_ng']]

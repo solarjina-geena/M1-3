@@ -183,7 +183,7 @@ main>.agent{
     <!-- (2026-11-08 팀장) 입력은 '일보 입력' 단추 하나로 바로 보이게. OCR 입력 앱(팀) 연결은 관리 화면에만 -->
     <a class="manage-shortcut entry-btn" id="manageLink" href="./manage.html?tab=mixed" target="m13manage" rel="noopener" title="작업일보 입력·관리 화면(로그인)">✍ 일보 입력 🔒</a>
     <a class="manage-shortcut survey-btn" href="./survey.html" target="m13survey" rel="noopener" title="사용자 테스트 설문(로그인 없음)">📝 설문</a>
-    <button id="compactToggle" class="manage-shortcut" type="button" title="작은 모니터용: 위쪽 큰 제목과 아래 설명 줄을 숨겨 그래프를 넓게">작은 화면</button>
+    <button id="compactToggle" class="manage-shortcut" type="button" hidden title="작은 모니터용: 위쪽 큰 제목과 아래 설명 줄을 숨겨 그래프를 넓게">작은 화면</button>
     <button id="graphHelpToggle" class="manage-shortcut" type="button" aria-expanded="false" aria-controls="graphHelp">도움말 ⓘ</button>
   </div>
 </div>
@@ -427,7 +427,7 @@ function renderVisionDefects(){
  const W=Math.max(640,(host.clientWidth||900)-24),LW=190,RW=300,BH=13,G=4,RG=14;
  const NS='http://www.w3.org/2000/svg';
  // 비전 차수별로 거르는 불량(작업일보 양식에 인쇄된 이름, 팀장 확인 2026-11-07)
- const STAGE_TXT={1:'미용접 · 이탈 · 여선',2:'권선정열 · Post 파손',3:'와이어 데미지'};
+ const STAGE_TXT={1:'미용접 · 이탈 · 여선',2:'권선정렬 · Post 파손',3:'와이어 데미지'};
  const mkSvg=(w,h)=>{const svg=document.createElementNS(NS,'svg');svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.style.cssText=`display:block;width:${w}px;height:${h}px;min-height:0;max-height:none`;
   const el=(t,a,txt)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;svg.append(e);return e};
   const tip=(e,s)=>{const t=document.createElementNS(NS,'title');t.textContent=s;e.append(t);return e};return {svg,el,tip}};
@@ -564,6 +564,7 @@ function renderProcessDaily(){
  const host=$('#lotGraph');if(!host)return;const PC={STITCHING:'IMEB3_STITCHING',BA:'IMEB3_WINDING',CA:'IMEB3_CA_PRESS'},PN={STITCHING:'스티칭(BS)',BA:'보빈아세이(BA)',CA:'코일아세이(CA)'},code=PC[processFilter];
  $('#graphTitle').textContent=`${PN[processFilter]} · 일별 생산 수량과 불량률`;
  $('#graphDescription').textContent='막대는 날짜별 생산 수량(모델 색), 점은 그날 불량률(PPM = 불량 수량 ÷ 생산 수량 × 1,000,000)입니다. 위쪽 표시 구간과 모델 선택에 따라 바뀝니다. 자료는 작업일보에서 DB 에 들어간 값입니다.';
+ if(processFilter==='BA')$('#graphDescription').textContent+=' (BA 불량률 = 진성만: 작업일보 용접·Set up·Wire 끊어짐 등 + 비전 재검에서 사람이 확인한 진성. 비전 1·2·3차 걸러낸 수량은 가성이 섞여 있어 불량률에서 뺌)';
  if(processFilter==='STITCHING')$('#graphDescription').textContent+=' (BS: 불량 = 전장·핀찍힘만. 위치도 칸 수량은 리워크 수량이라 불량·불량률에서 빼고 아래 ② 맨 오른쪽에 따로 표시)';
  $('#overallGraphLegend').hidden=true;$('#injectionGraphLegend').hidden=true;
  const key=code+'|'+(axisStart||'')+'|'+(axisEnd||'');
@@ -603,18 +604,20 @@ function renderProcessDaily(){
    if(processFilter==='STITCHING'){const g=n=>types.find(d=>d.name===n)||{name:n,by:{}};const rw=types.find(d=>d.name==='위치도');
     const rest=types.filter(d=>!['전장','핀찍힘','위치도'].includes(d.name));
     types=[g('전장'),g('핀찍힘'),...rest];if(rw)types.push({...rw,name:'위치도 리워크',rework:true})}
+   if(processFilter==='BA'){const all=pd.filter(d=>models.some(m=>(d.by[m]||0)>0));const jr=all.filter(d=>!d.vision&&!d.rework),vs=all.filter(d=>d.vision),rw=all.filter(d=>d.rework);window.__baVisionMore=Math.max(0,vs.length-10);types=[...jr,...vs.slice(0,10),...rw]}
    types=[...types.filter(d=>!d.rework),...types.filter(d=>d.rework)];/* 리워크(불량 아님)는 항상 맨 오른쪽 */
    if(!types.length){const p=document.createElement('p');p.textContent='표시 구간에 불량 기록이 없습니다.';box.append(p)}
-   else{const ms=models.filter(m=>types.some(d=>d.by[m])),W2=Math.max(640,(host.clientWidth||900)-24),H2=300,L2=48,T2=36,B2=210,gw2=Math.max(44,(W2-L2-16)/types.length),bw2=Math.min(18,(gw2-10)/Math.max(1,ms.length)),w2=Math.max(W2,L2+types.length*gw2+16),maxV=Math.max(1,...types.flatMap(d=>ms.map(m=>d.by[m]||0)));
+   else{const ms=models.filter(m=>types.some(d=>d.by[m])),W2=Math.max(640,(host.clientWidth||900)-24),H2=300,L2=48,T2=36,B2=210,gw2=Math.max(34,(W2-L2-16)/types.length),bw2=Math.min(18,(gw2-10)/Math.max(1,ms.length)),w2=Math.max(W2,L2+types.length*gw2+16),maxV=Math.max(1,...types.flatMap(d=>ms.map(m=>d.by[m]||0)));
     const s2=document.createElementNS(NS,'svg');s2.setAttribute('width',w2);s2.setAttribute('height',H2);s2.setAttribute('viewBox',`0 0 ${w2} ${H2}`);s2.style.cssText=`display:block;width:${w2}px;height:${H2}px;min-height:0;max-height:none`;
     const e2=(t,a,txt)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(txt!=null)e.textContent=txt;s2.append(e);return e};
     for(let k=0;k<=4;k++){const y=B2-(B2-T2)*k/4;e2('line',{x1:L2,x2:w2-8,y1:y,y2:y,stroke:'#eef0f2'});e2('text',{x:L2-6,y:y+4,'text-anchor':'end','font-size':10,fill:'#6b7280'},fmt(Math.round(maxV*k/4)))}
-    types.forEach((d,i)=>{const gx=L2+i*gw2+gw2/2,x0=gx-ms.length*bw2/2;ms.forEach((m,j)=>{const v=d.by[m]||0;if(!v)return;const h=(B2-T2)*v/maxV,x=x0+j*bw2;const r=e2('rect',d.rework?{x,y:B2-h,width:bw2-2,height:Math.max(2,h),rx:2,fill:COL[m],'fill-opacity':0.28,stroke:COL[m],'stroke-dasharray':'3 2'}:{x,y:B2-h,width:bw2-2,height:Math.max(2,h),rx:2,fill:COL[m]});const tt=document.createElementNS(NS,'title');tt.textContent=`${m} ${d.name}: ${fmt(v)} EA`;r.append(tt);e2('text',{x:x+(bw2-2)/2,y:B2-h-3,'text-anchor':'middle','font-size':9.5,'font-weight':600,fill:'#374151'},fmt(v))});
+    types.forEach((d,i)=>{const gx=L2+i*gw2+gw2/2,x0=gx-ms.length*bw2/2;ms.forEach((m,j)=>{const v=d.by[m]||0;if(!v)return;const h=(B2-T2)*v/maxV,x=x0+j*bw2;const r=e2('rect',d.rework?{x,y:B2-h,width:bw2-2,height:Math.max(2,h),rx:2,fill:COL[m],'fill-opacity':0.28,stroke:COL[m],'stroke-dasharray':'3 2'}:d.vision?{x,y:B2-h,width:bw2-2,height:Math.max(2,h),rx:2,fill:COL[m],'fill-opacity':0.6,stroke:'#7c2d12','stroke-width':1}:{x,y:B2-h,width:bw2-2,height:Math.max(2,h),rx:2,fill:COL[m]});const tt=document.createElementNS(NS,'title');tt.textContent=`${m} ${d.name}: ${fmt(v)} EA`;r.append(tt);e2('text',{x:x+(bw2-2)/2,y:B2-h-3,'text-anchor':'middle','font-size':9.5,'font-weight':600,fill:'#374151'},fmt(v))});
      if(!ms.some(m=>d.by[m]))e2('text',{x:gx,y:B2-4,'text-anchor':'middle','font-size':9.5,fill:'#9ca3af'},'0');
      e2('text',{x:gx-2,y:B2+13,'text-anchor':'end','font-size':10.5,'font-weight':600,fill:d.rework?'#b45309':'#1f2937',transform:`rotate(-35 ${gx-2} ${B2+13})`},d.name)});
+    if(types.some(d=>d.vision)){const vi=types.findIndex(d=>d.vision),xv=L2+vi*gw2;e2('line',{x1:xv,x2:xv,y1:T2-6,y2:B2,stroke:'#d1d5db','stroke-dasharray':'4 3'});e2('text',{x:xv+4,y:12,'font-size':10,fill:'#7c2d12'},'비전 재검에서 사람이 확인한 진성 유형(작업일보 외 추가)'+(window.__baVisionMore?` · 그 밖 ${window.__baVisionMore}종`:''))}
     if(types.some(d=>d.rework)){const gi=types.findIndex(d=>d.rework),xs=L2+gi*gw2;e2('line',{x1:xs,x2:xs,y1:T2-6,y2:B2,stroke:'#d1d5db','stroke-dasharray':'4 3'});e2('text',{x:xs+gw2/2,y:12,'text-anchor':'middle','font-size':10,fill:'#b45309'},processFilter==='BA'?'리워크 대상(가성, 불량 아님)':'리워크 수량(불량 아님)')}
     e2('line',{x1:L2,x2:w2-8,y1:B2,y2:B2,stroke:'#9ca3af'});const sc=document.createElement('div');sc.style.cssText='overflow-x:auto';sc.append(s2);box.append(sc);
-    const real=types.filter(d=>!d.rework&&tot(d)>0),rwd=types.find(d=>d.rework);const t3=(real.length?real.slice(0,3).map((d,i)=>`${i+1}. ${d.name} ${fmt(tot(d))}`).join(' · '):'불량 기록 없음')+(rwd?` · ${rwd.name} ${fmt(tot(rwd))} (불량 아님)`:'');const n2=document.createElement('p');n2.className='fd-note';n2.textContent=`🏷 많은 순: ${t3} · 표시 구간 ${axisStart||'처음'} ~ ${axisEnd||'끝'} · 상위 ${types.length}개 유형 · 막대에 마우스를 올리면 모델·수량`;box.append(n2)}}}
+    const real=types.filter(d=>!d.rework&&!d.vision&&tot(d)>0),rwd=types.find(d=>d.rework),vsum=types.filter(d=>d.vision).reduce((a,d)=>a+tot(d),0);const t3=(real.length?real.slice(0,3).map((d,i)=>`${i+1}. ${d.name} ${fmt(tot(d))}`).join(' · '):'불량 기록 없음')+(vsum?` · 비전 재검 진성 ${fmt(vsum)}`:'')+(rwd?` · ${rwd.name} ${fmt(tot(rwd))} (불량 아님)`:'');const n2=document.createElement('p');n2.className='fd-note';n2.textContent=`🏷 많은 순: ${t3} · 표시 구간 ${axisStart||'처음'} ~ ${axisEnd||'끝'} · 상위 ${types.length}개 유형 · 막대에 마우스를 올리면 모델·수량`;box.append(n2)}}}
 }
 function drawCurrentGraph0(){try{syncSubViewRange()}catch(e){console.warn('[sub sync]',e)}if(processFilter==='BA'&&baView==='vision'){renderVisionDefects();return}if(processFilter==='CA'&&caView==='rework'){renderRework();return}if((processFilter==='STITCHING'&&bsView==='daily')||(processFilter==='BA'&&baView==='daily')||(processFilter==='CA'&&caView==='daily')){renderProcessDaily();return}if(processFilter==='ALL'&&allView==='chain'){renderChainGraph();return}if(processFilter==='FINAL_INSPECTION'&&finView==='defect'){renderFinalDefects();return}if(processFilter==='INJECTION'&&injView!=='flow'){if(injView==='bobbin'){renderPositionScreen();return}renderInjectionConditions();return}if(processFilter==='CA'&&caView==='position'){renderPositionScreen();return}$('#graphTitle').textContent='그래프 읽는 방법';$('#graphDescription').textContent='X축은 날짜가 아니라 제조 흐름 순서입니다. 공정 상자 안에 해당 날짜와 수량을 넣고, 여러 날의 최종검사는 날짜별 상자로 표시합니다. 원소재 LOT 가지는 위쪽에, BA·CA 수량 갭은 아래쪽에 분리합니다.';$('#overallGraphLegend').hidden=false;$('#injectionGraphLegend').hidden=true;drawManufacturingGraph();try{flowDecorate()}catch(e){console.warn('[flow range]',e)}}// ---- 세로 공정 흐름에 LOT 연결 반영 (2026-11-07 팀장): LOT 흐름·추적 질문이면 상자를 날짜 짐작이 아니라 DB LOT 연결(사슬)로 고른다.
 //      사출로 물으면 아래(스티칭→권선→압입→최종검사), CA 로 물으면 위(권선→스티칭→사출)까지. 원소재 LOT 가지·최종검사 표시는 기존 세로 그림 그대로.
@@ -1043,7 +1046,7 @@ restoreLocalDashboard();(function applyUrlScope(){try{const q=new URLSearchParam
 </script><script src="judgment.js"></script>
 <script>/* (2026-11-08) 작은 화면 모드: 단추로 켜고 끔(브라우저에 기억), 처음엔 화면 높이 800px 이하이면 자동으로 켬 */(()=>{
 const b=document.getElementById('compactToggle');if(!b)return;
-/* (2026-11-08 수정) 자동 켜기 없음 — 화면은 모니터 높이에 맞추는 기능이 따로 있으므로 기본 화면이 기본, 단추로만 켬 */let on=false;try{on=localStorage.getItem('m13compact2')==='1'}catch(_){}
+/* (2026-11-08 수정) 자동 켜기 없음 — 화면은 모니터 높이에 맞추는 기능이 따로 있으므로 기본 화면이 기본, 단추로만 켬 */let on=false;/* (2026-11-08 팀장) 모니터 높이 자동 맞춤으로 충분 — 작은 화면 단추는 숨김(코드는 유지) */
 const apply=()=>{document.body.classList.toggle('compact',on);b.classList.toggle('on',on);b.textContent=on?'작은 화면 ✓':'작은 화면';b.title=on?'작은 화면 켜짐 — 누르면 기본 화면':'작은 모니터용: 머리글을 얇게, 아래 설명 줄을 숨겨 그래프를 넓게';try{window.dispatchEvent(new Event('resize'))}catch(_){}};
 b.onclick=()=>{on=!on;try{localStorage.setItem('m13compact2',on?'1':'0')}catch(_){}apply()};apply();
 })()</script><script>/* (2026-11-08 팀장) 모든 대시보드 화면은 여는 모니터 높이에 정확히 맞춘다 — 페이지 전체 세로 이동 막대 없이, 넘치는 내용은 그래프 칸 안에서만 스크롤.
