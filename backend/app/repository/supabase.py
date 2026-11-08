@@ -242,6 +242,21 @@ class SupabaseRepository(Repository):
             a["defects"] += r["defect_qty"] or 0
             a["minutes"] += r["work_minutes"] or 0
             a["shifts"].add(r["shift"])
+        if process == "IMEB3_STITCHING":
+            # (2026-11-08 팀장) BS 일보의 '위치도' 칸 수량은 불량이 아니라 리워크 수량 → 불량·불량률에서 빼고 따로 둔다(DB 원문은 그대로)
+            pp: dict[str, Any] = {"process_code": "eq.IMEB3_STITCHING"}
+            if model:
+                pp["model_code"] = f"eq.{model}"
+            _date_filter(pp, "the_date", date_from, date_to)
+            POS = {"위치도", "location", "position", "위치", "위치도불량", "OV 위치도"}
+            for r in self.c.select("m13_defect_by_type", pp, limit=100000):
+                if r.get("defect_name") in POS and (r.get("qty") or 0) > 0:
+                    a = agg.get((str(r["the_date"])[:10], r["model_code"]))
+                    if a is not None:
+                        a["defects"] -= r["qty"]
+                        a["position_rework"] = a.get("position_rework", 0) + r["qty"]
+            for a in agg.values():
+                a["defects"] = max(0, a["defects"])
         out = []
         for a in sorted(agg.values(), key=lambda a: (a["date"], a["model"])):
             a["shifts"] = sorted(a["shifts"])
