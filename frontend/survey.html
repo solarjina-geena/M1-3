@@ -72,9 +72,9 @@ h+=q('과제 3: 실제로 한 질문 하나와, 답이 맞았는지',text('t3_qu
  +q('과제 5: 배정받은 날짜',text('t5_date','예) 10/13'))
  +q('과제 5: 고친 칸 수 (대략)',text('t5_fixed','예) 3'))
  +q('과제 5: 저장 결과',radios('t5_save',['모두 저장·대시보드에서 확인','일부만 저장','저장 실패','저장 안 함']))
- +q('가장 오래 막힌 과제와 막힌 곳 (오류 문구가 있었다면 그대로)',para('stuck'))+`</section>`;
-h+=`<section class="card"><h2>3. 설문</h2><div class="sub">1 전혀 아니다 · 2 아니다 · 3 보통 · 4 그렇다 · 5 매우 그렇다</div><div class="q" style="border:0"><table class="scale"><thead><tr><th></th>${[1,2,3,4,5].map(n=>`<th>${n}</th>`).join('')}</tr></thead><tbody>`
- +SCALE.map(([k,t])=>`<tr><td>${e(t)}</td>${[1,2,3,4,5].map(n=>`<td><input type="radio" name="${k}" value="${n}" aria-label="${e(t)} ${n}"></td>`).join('')}</tr>`).join('')+`</tbody></table></div></section>`;
+ +q('가장 오래 막힌 과제와 막힌 곳 (오류 문구가 있었다면 그대로)',para('stuck','예) 과제 5 — 파일 고르는 창에 PDF 가 안 보였음'),0,'못함·건너뜀·도움 받아 완료를 고른 과제가 있으면 꼭 적어 주세요')+`</section>`;
+h+=`<section class="card"><h2>3. 설문</h2><div class="sub">1 전혀 아니다 · 2 아니다 · 3 보통 · 4 그렇다 · 5 매우 그렇다 — <b>모든 줄에 하나씩</b> 골라 주세요</div><div class="q" style="border:0"><table class="scale"><thead><tr><th></th>${[1,2,3,4,5].map(n=>`<th>${n}</th>`).join('')}</tr></thead><tbody>`
+ +SCALE.map(([k,t])=>`<tr data-name="${k}" data-req="1"><td>${e(t)}<span class="req" style="color:var(--accent)">*</span></td>${[1,2,3,4,5].map(n=>`<td><input type="radio" name="${k}" value="${n}" aria-label="${e(t)} ${n}"></td>`).join('')}</tr>`).join('')+`</tbody></table></div></section>`;
 h+=`<section class="card"><h2>4. 자유 의견</h2>`+q('가장 불편했던 점',para('worst'))+q('꼭 추가됐으면 하는 것',para('wish'))
  +q('화면 녹화 (선택)',radios('recording',['녹화함 — 진행자에게 따로 보냄','녹화함 — 공유는 어려움','녹화 안 함']))+`</section>`;
 const f=document.getElementById('f');f.innerHTML=h;
@@ -88,6 +88,9 @@ fetch('/api/survey/status').then(r=>r.json()).then(s=>{if(!s.open){go.disabled=t
 go.onclick=async()=>{
   document.querySelectorAll('.miss').forEach(x=>x.classList.remove('miss'));
   const a=collect(),miss=[...f.querySelectorAll('[data-req]')].filter(d=>!(d.dataset.name in a));
+  /* (2026-11-08) 못함·건너뜀·도움 받아 완료가 있으면 막힌 곳을 꼭 적게 — 첫 응답에서 비어 있었음 */
+  const hard=['t1','t2','t3','t4','t5'].some(k=>/못함|건너뜀|도움/.test(a[k+'_done']||''));
+  const st=f.querySelector('textarea[name=stuck]');if(hard&&!a.stuck&&st)miss.push(st);
   if(miss.length){miss.forEach(d=>d.classList.add('miss'));miss[0].scrollIntoView({behavior:'smooth',block:'center'});msg.className='msg err';msg.textContent='빨간 테두리 문항을 골라 주세요 ('+miss.length+'개)';return}
   go.disabled=true;msg.className='msg';msg.textContent='제출 중…';
   try{const r=await fetch('/api/survey',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tester_group:a.group,answers:a})});
