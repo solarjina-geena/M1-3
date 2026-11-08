@@ -292,6 +292,14 @@ function renderFinalDefects(){
  // 수량 / PPM 전환
  /* (2026-11-07 팀장) 수량/PPM 전환 단추 없앰 — 막대 = 불량 수량, 숫자 = 수량 (PPM) */finMetric='qty';
  box.append(sum);
+ /* (2026-11-08 사용자 테스트) 묶음 순서라 가장 큰 막대를 찾기 어려움 → 모델별 많은 순 Top 3 한 줄(2차 본검사), 재검을 넣으면 1위가 바뀌면 함께 표시 */
+ {const top=document.createElement('div');top.className='fd-note';top.style.cssText='margin:6px 0 2px;font-size:12.5px;color:#374151';
+  const q=(d,m,c)=>d.by[m]?.[c]?.qty||0,lines=[];
+  for(const m of models){const t3=[...finDefData.defects].filter(d=>q(d,m,CLS)>0).sort((a,b)=>q(b,m,CLS)-q(a,m,CLS)).slice(0,3);if(!t3.length)continue;
+   let ln=`<b style="color:${m==='OV'?'#8a6400':COL[m]}">${m}</b> 많은 순: `+t3.map((d,i)=>`${i+1}. ${d.name} <b>${fmt(q(d,m,CLS))}</b>`).join(' · ');
+   const wr=d=>q(d,m,CLS)+q(d,m,'재검'),r1=[...finDefData.defects].sort((a,b)=>wr(b)-wr(a))[0];
+   if(r1&&r1!==t3[0]&&wr(r1)>0)ln+=` <span style="color:#b45309">(재검 포함 1위: ${r1.name} ${fmt(wr(r1))})</span>`;lines.push(ln)}
+  if(lines.length){top.innerHTML='🏷 '+lines.join('<br>🏷 ')+' <small style="color:#6b7280">— 본검사(2차) 기준</small>';box.append(top)}}
  const val=(d,m)=>{const b=d.by[m]?.[CLS];if(!b)return 0;return finMetric==='ppm'?(b.ppm||0):b.qty};
  let types=finDefData.defects.filter(d=>models.some(m=>(d.by[m]?.[CLS]?.qty||0)>0));
  const tq=d=>models.reduce((s,m)=>s+val(d,m),0);
@@ -506,6 +514,12 @@ function renderRework(){
  for(const m of models){const rs=rows.filter(r=>r.model_code===m);if(!rs.length)continue;const w=rs.filter(r=>r.part==='WELD'),a=rs.filter(r=>r.part==='ASSEMBLY');
   const c=document.createElement('div');c.className='fd-card';c.style.borderLeftColor=COL[m];c.innerHTML=`<b style="color:${TXT[m]}">${m}</b> 리워크 투입 <b>${fmt(sm(w,'start_qty')+sm(a,'start_qty'))}</b> EA<br><small>용접부(BA) ${fmt(sm(w,'start_qty'))}${sm(w,'first_qty')?` (초품 등 ${fmt(sm(w,'first_qty'))})`:''} · 조립부(CA) ${fmt(sm(a,'start_qty'))} · ${new Set(rs.map(r=>r.work_date)).size}일</small>`;sum.append(c)}
  box.append(sum);
+ /* (2026-11-08 사용자 테스트) 가장 많은 날을 바로 보이게 */
+ if(rows.length){const byD={};for(const r of rows){(byD[r.work_date]=byD[r.work_date]||[]).push(r)}
+  const best=Object.entries(byD).map(([d,rs])=>[d,rs.reduce((x,r)=>x+(r.start_qty||0),0),rs]).sort((a,b)=>b[1]-a[1])[0];
+  if(best&&best[1]>0){const parts={};for(const r of best[2]){const k=r.model_code+' '+(r.part==='WELD'?'용접부(BA)':'조립부(CA)');parts[k]=(parts[k]||0)+(r.start_qty||0)}
+   const n=document.createElement('div');n.className='fd-note';n.style.cssText='margin:6px 0 2px;font-size:12.5px;color:#374151';
+   n.innerHTML=`🏷 리워크 투입이 가장 많은 날: <b>${best[0].slice(5).replace('-','/')}</b> <b>${fmt(best[1])}</b> EA <small style="color:#6b7280">(`+Object.entries(parts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${fmt(v)}`).join(' · ')+`)</small>`;box.append(n)}}
  if(!rows.length){const p=document.createElement('p');p.textContent=`표시 구간 ${axisStart||'?'} ~ ${axisEnd||'?'} 에 리워크 기록이 없습니다. 관리 화면 '⑦ 리워크 작업일보'에서 입력하세요.`;box.append(p);return}
  const NS='http://www.w3.org/2000/svg',W=Math.max(640,(host.clientWidth||900)-24);
  const mk=(w,h)=>{const svg=document.createElementNS(NS,'svg');svg.setAttribute('width',w);svg.setAttribute('height',h);svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.style.cssText=`display:block;width:${w}px;height:${h}px;min-height:0;max-height:none`;const el=(t,a,x)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(x!=null)e.textContent=x;svg.append(e);return e};const tip=(e,x)=>{const t=document.createElementNS(NS,'title');t.textContent=x;e.append(t);return e};return{svg,el,tip}};

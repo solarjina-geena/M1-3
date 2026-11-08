@@ -67,7 +67,7 @@ for(const [k,t,link] of TASKS){h+=q(t,`<div class="pair"><div><small>완료 여�
 h+=q('과제 3: 실제로 한 질문 하나와, 답이 맞았는지',text('t3_question','예) 9월 IV 권선 불량 상위 3개는? — 맞음'))
  +q('과제 4-1: IV 비전 불량의 가성(실제로는 양품) 비율은 몇 %?',text('t4_1','예) 50%'),0,`<a class="task-link" href="${B}/index.html?proc=BA&view=vision&mode=range&from=2026-09-01&to=2026-10-31" target="m13dash">권선 비전 불량 화면 ↗</a>`)
  +q('과제 4-2: 9월 IV 최종검사에서 가장 많은 불량 유형은?',text('t4_2'),0,`<a class="task-link" href="${B}/index.html?proc=FINAL_INSPECTION&view=defect&mode=range&from=2026-09-01&to=2026-09-30" target="m13dash">최종검사 불량 유형 화면 ↗</a>`)
- +q('과제 4-3: 10월에 리워크 투입이 가장 많았던 날짜는?',text('t4_3','예) 10/1'),0,`<a class="task-link" href="${B}/index.html?proc=CA&view=rework&mode=range&from=2026-10-01&to=2026-10-31" target="m13dash">리워크 화면 ↗</a>`)
+ +q('과제 4-3: CA 초품 위치도(8/21~9/3)에서 ‘불량’ 판정은 몇 점?',text('t4_3','예) 10점'),0,`<a class="task-link" href="${B}/index.html?proc=CA&view=position&mode=range&from=2026-08-21&to=2026-09-03" target="m13dash">CA 초품 위치도 화면 ↗</a>`)
  +q('과제 5: 해 본 입력 (여러 개 고르기)',`<div class="opts" data-name="t5_kinds">${['사출·조립 묶음','BS(스티칭)','리워크','최종검사'].map(o=>`<label><input type="checkbox" name="t5_kinds" value="${o}"> ${o}</label>`).join('')}</div>`)
  +q('과제 5: 배정받은 날짜',text('t5_date','예) 10/13'))
  +q('과제 5: 고친 칸 수 (대략)',text('t5_fixed','예) 3'))

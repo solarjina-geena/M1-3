@@ -111,6 +111,9 @@ def to_rows(view_rows: list[dict]) -> list[dict]:
     for r in view_rows:
         if r.get("variant") not in ("IV", "OV", "HSV"):
             continue
+        # (2026-11-08 팀장) 리워크는 재검도 일반 생산도 아닌 '다시 작업하는 공정' — 생산 흐름·수량에 섞지 않는다(리워크 탭에서 따로).
+        if r.get("work_type") == "REWORK":
+            continue
         out.append(_inspection_row(r) if r.get("kind") == "inspection" else _production_row(r))
     out.sort(key=lambda x: (x["date"], x["process"], x["variant"], x["id"]))
     return out
