@@ -168,7 +168,7 @@ main>.agent{
 /* (2026-11-07) 윈도우 글자 크기 150%(화면 폭 1,280 근처)에서 공정 단추 줄이 잘리지 않게: 단추가 폭에 맞춰 줄어듦 */
 @media (max-width:1400px) and (min-width:1051px){.step{min-width:0;padding:6px 8px}.step b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.step small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 </style><script src="auth-store.js"></script>
-</head><body>
+<style>/* (2026-11-08 사용자 테스트 의견: 현장 작은 모니터) 작은 화면 모드 — 제목·아래 설명 숨김, 그래프 높이 확대 */body.compact header,body.compact footer,body.compact .flow-title span{display:none}body.compact .genealogy-card{height:calc(100vh - 175px)}body .pos-tiles .pos-tile:first-child{border:2px solid #f3c2c2;background:#fffafa}body .pos-tiles .pos-tile:first-child b{font-size:32px;line-height:1.15}.pos-tile b.okv{color:#0ca30c}#compactToggle.on{background:#0f2a44;color:#fff;border-color:#0f2a44}</style></head><body>
 <div class="app">
 <header><div><span class="eyebrow">MANUFACTURING INTELLIGENCE</span><h1>손대시 / EASY DASH</h1></div><div class="status"><i></i> Evidence 기반</div></header>
 <section class="flow"><div class="flow-title"><b>제조 공정 흐름</b><span>단계를 누르면 그래프가 좁혀집니다</span></div><button class="step" data-proc="ALL"><small>00</small><b>전체 흐름</b><span>원소재부터 검사·출하까지</span></button><i>⇄</i><button class="step" data-proc="INJECTION"><small>01</small><b>BB / 사출</b><span>보빈·케이스 성형</span></button><i>⇄</i><button class="step" data-proc="STITCHING"><small>02</small><b>BS / 스티칭</b><span>리드핀 삽입</span></button><i>⇄</i><button class="step" data-proc="BA"><small>03</small><b>BA / 보빈아세이</b><span>권선·용접</span></button><i>⇄</i><button class="step" data-proc="CA"><small>04</small><b>CA / 코일아세이</b><span>코일 조립</span></button><i>⇄</i><button class="step" data-proc="FINAL_INSPECTION"><small>05</small><b>최종검사</b><span>검사·합격수량</span></button><i>⇄</i><button class="step" data-proc="SHIPMENT"><small>06</small><b>출하</b><span>출하수량</span></button></section>
@@ -183,6 +183,7 @@ main>.agent{
     <!-- (2026-11-08 팀장) 입력은 '일보 입력' 단추 하나로 바로 보이게. OCR 입력 앱(팀) 연결은 관리 화면에만 -->
     <a class="manage-shortcut entry-btn" id="manageLink" href="./manage.html?tab=mixed" target="m13manage" rel="noopener" title="작업일보 입력·관리 화면(로그인)">✍ 일보 입력 🔒</a>
     <a class="manage-shortcut survey-btn" href="./survey.html" target="m13survey" rel="noopener" title="사용자 테스트 설문(로그인 없음)">📝 설문</a>
+    <button id="compactToggle" class="manage-shortcut" type="button" title="작은 모니터용: 위쪽 큰 제목과 아래 설명 줄을 숨겨 그래프를 넓게">작은 화면</button>
     <button id="graphHelpToggle" class="manage-shortcut" type="button" aria-expanded="false" aria-controls="graphHelp">도움말 ⓘ</button>
   </div>
 </div>
@@ -823,7 +824,7 @@ function renderPositionScreen(){
  {const nts=[...new Set(selDay.filter(r=>r.note&&(posMode==='range'||!multiSeq||posSeq==='all'||(r.check_sequence||1)===posSeq)).map(r=>(posMode==='range'?r.check_date.slice(5)+' '+r.variant+': ':'')+((r.check_sequence||1)>1?'[재측정 '+r.check_sequence+'차] ':'')+r.note))];if(nts.length){const nb=document.createElement('div');nb.style.cssText='margin:6px 0 8px;padding:8px 12px;border-radius:8px;background:#fff7dc;border:1px solid #e7ad00;color:#5a4300;font-size:13px';nb.innerHTML='<b>📝 특이사항</b> · '+nts.map(x=>x.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))).join(' / ');host.append(nb)}}
  const cnt={정상:0,경계:0,불량:0};for(const r of sel)if(r.status)cnt[r.status]++;const worst=sel.reduce((a,r)=>Number(r.pos_xy)>Number(a?.pos_xy??-1)?r:a,null),models=[...new Set(sel.map(r=>r.variant))],linked=[...new Set(sel.filter(r=>r.process_run_id).map(r=>r.variant))];
  const tiles=document.createElement('div');tiles.className='pos-tiles';const tile=(t,v,s,cls)=>{const d=document.createElement('div');d.className='pos-tile';d.innerHTML=`<small>${t}</small><b class="${cls||''}">${v}</b><span>${s}</span>`;return d};
- tiles.append(tile('측정',sel.length+'점',models.map(m=>m+' '+sel.filter(r=>r.variant===m).length).join(' · ')),tile('최대 위치도',worst?Number(worst.pos_xy).toFixed(3):'—',worst?`${worst.variant} ${worst.side==='L'?'좌':'우'}핀 ${posBB?'캐비티 ':'#'}${cav(worst.sample_no)}`:'',worst&&worst.status==='불량'?'ng':''),tile('판정',`<span style="color:#0ca30c">정상 ${cnt.정상}</span> · <span style="color:#d9940a">경계 ${cnt.경계}</span> · <span style="color:#d03b3b">불량 ${cnt.불량}</span>`,'A1-3 3단계'),tile(posBB?'사출 실행 연결':'CA 실행 연결',`${linked.length} / ${models.length} 모델`,posBB?'BB LOT 사출 실행 1건일 때만 연결':'그날·모델 CA 실행 1건일 때만 연결'));host.append(tiles);
+ /* (2026-11-08 사용자 테스트: '불량' 숫자를 못 찾고 측정 수를 답함) 불량 판정을 맨 앞 큰 카드로 */tiles.append(tile('불량 판정',`${cnt.불량}점`,`<span style="color:#0ca30c">정상 ${cnt.정상}</span> · <span style="color:#d9940a">경계 ${cnt.경계}</span> · 측정 ${sel.length}점 중`,cnt.불량?'ng':'okv'),tile('측정',sel.length+'점',models.map(m=>m+' '+sel.filter(r=>r.variant===m).length).join(' · ')),tile('최대 위치도',worst?Number(worst.pos_xy).toFixed(3):'—',worst?`${worst.variant} ${worst.side==='L'?'좌':'우'}핀 ${posBB?'캐비티 ':'#'}${cav(worst.sample_no)}`:'',worst&&worst.status==='불량'?'ng':''),tile(posBB?'사출 실행 연결':'CA 실행 연결',`${linked.length} / ${models.length} 모델`,posBB?'BB LOT 사출 실행 1건일 때만 연결':'그날·모델 CA 실행 1건일 때만 연결'));host.append(tiles);
  // 핀 확대 그림 (A1-3 drawPinDetail, 표시범위 고정)
  const cv=document.createElement('canvas');cv.style.cssText='width:100%;display:block;border:1px solid #e3e8ec;border-radius:10px';const W=1400,H=700;cv.width=W;cv.height=H;host.append(cv);const d=cv.getContext('2d');const posHits=[],posRings=[];
  // (2026-11-07 사용자) 점에 마우스를 올리면 그 점의 값을 작은 상자로 보여 준다 — 그림 위 글자는 불량만 쓰므로 나머지 값은 여기서 확인
@@ -1014,7 +1015,12 @@ restoreLocalDashboard();(function applyUrlScope(){try{const q=new URLSearchParam
   $('#chainGaps').querySelectorAll('button[data-q]').forEach(b=>b.onclick=()=>{applyQuestionGraphScope(b.dataset.q);render();$$('.agent-tab')[0].click()});
   $('#chainFull').innerHTML=`<div class="review-item"><b>완전 사슬 ${full.length} / ${gaps.length} CA 제품 LOT</b><small>수지→사출→스티칭→권선→압입 연결이 모두 이어진 LOT · 자동 연결은 CANDIDATE, 사람 확인은 CONFIRMED(관리 화면)</small></div>`+full.slice(0,10).map(g=>`<div class="review-item"><b>${esc(g.ca_date)} ${esc(g.model_code)} · ${esc(g.ca_lot)}</b><small>BA ${esc(g.ba_lot)} · 스티칭 ${esc(g.sti_lot)} · 사출 ${esc(g.inj_lot)} · 수지 ${esc(g.resin_lots)}</small></div>`).join('')}catch(e){console.warn('[review tabs]',e)}})();
 </script><script src="judgment.js"></script>
-</body></html>
+<script>/* (2026-11-08) 작은 화면 모드: 단추로 켜고 끔(브라우저에 기억), 처음엔 화면 높이 800px 이하이면 자동으로 켬 */(()=>{
+const b=document.getElementById('compactToggle');if(!b)return;
+let on;try{const v=localStorage.getItem('m13compact');on=v==null?window.innerHeight<=800:v==='1'}catch(_){on=window.innerHeight<=800}
+const apply=()=>{document.body.classList.toggle('compact',on);b.classList.toggle('on',on);b.textContent=on?'기본 화면':'작은 화면';try{window.dispatchEvent(new Event('resize'))}catch(_){}};
+b.onclick=()=>{on=!on;try{localStorage.setItem('m13compact',on?'1':'0')}catch(_){}apply()};apply();
+})()</script></body></html>
 
 
 
