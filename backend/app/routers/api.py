@@ -180,6 +180,18 @@ def defects_by_model(process: str = Query(..., pattern="^IMEB3_(STITCHING|WINDIN
             out.extend(sorted(vt.values(), key=lambda a: -sum(a["by"].values())))
             if fb:
                 out.append({"name": "가성 → 리워크 대상", "by": fb, "raw": ["비전 가성불량 조치 엑셀(FALSE_REJECT)"], "rework": True})
+        if process == "IMEB3_CA_PRESS":
+            # (2026-11-08 팀장) CA 리워크 대기 = 최종검사일 기준으로 집계된 마킹 불량 수량(모델별) — 재마킹 리워크 대상. 본검사(2차) 기준, 최종검사 불량 유형 화면과 같은 숫자
+            fd = _repo().final_defects(None, date_from or None, date_to or None)
+            mk: dict = {}
+            for d in fd.get("defects", []):
+                if d.get("name") == "Marking 불량":
+                    for m, by in (d.get("by") or {}).items():
+                        q = ((by or {}).get("2차") or {}).get("qty") or 0
+                        if q > 0:
+                            mk[m] = mk.get(m, 0) + q
+            if mk:
+                out.append({"name": "마킹 불량 → 리워크 대기", "by": mk, "raw": ["최종검사 본검사(2차) Marking 불량, 검사일 기준"], "rework": True})
         return out
     return _wrap(run)
 
