@@ -12,7 +12,7 @@
       const out = document.getElementById('imgOut'); if (!out) return null;
       const card = out.closest('.card') || out.parentElement;
       b = document.createElement('div'); b.className = 'card'; b.id = 'jlistCard'; b.style.marginTop = '12px';
-      b.innerHTML = '<h3 style="display:flex;gap:10px;align-items:center"><span id="jlistTitle">저장된 작업일보</span><button class="ghost small" type="button" id="jlistReload">목록 새로고침</button></h3><div class="sub">DB 에 저장된 기록입니다(새로고침해도 그대로). 최근 입력순 30건 · 기간으로 거르기 · <b>중복</b> = 같은 날·모델·공정·LOT 이 두 번 이상. 잘못 저장했으면 <b>삭제</b>(사유 필수, 하위 기록까지 함께 무효 처리). 수정은 같은 일보를 다시 판독해 고친 뒤 \'기존 기록 바꾸기\'로 저장하세요.</div><div id="jlist"></div>';
+      b.innerHTML = '<h3 style="display:flex;gap:10px;align-items:center"><span id="jlistTitle">저장된 작업일보</span><button class="ghost small" type="button" id="jlistReload">목록 새로고침</button></h3><div class="sub">DB 에 저장된 기록입니다(새로고침해도 그대로). 최근 입력순 30건 · 기간을 고르면 <b>모델별 빠진 날짜</b>가 보이고, 정렬을 날짜순으로 바꿀 수 있습니다 · <b>중복</b> = 같은 날·모델·공정·LOT 이 두 번 이상. 잘못 저장했으면 <b>삭제</b>(사유 필수, 하위 기록까지 함께 무효 처리). 수정은 같은 일보를 다시 판독해 고친 뒤 \'기존 기록 바꾸기\'로 저장하세요.</div><div id="jlist"></div>';
       card.after(b); document.getElementById('jlistReload').onclick = () => load(); b = document.getElementById('jlist');
     }
     return b;
@@ -31,11 +31,11 @@
     const edits = r => Number(r.human_edits) ? ` <small class="muted">고침 ${r.human_edits}</small>` : '';
     const fmt = n => n == null ? '—' : Number(n).toLocaleString();
     const opts = fin ? {
-      dateKey: 'inspection_date', timeKey: 'recorded_at', dateLabel: '검사일', empty: '저장된 최종검사 본검사가 없습니다.',
+      dateKey: 'inspection_date', timeKey: 'recorded_at', dateLabel: '검사일', gapBy: 'model_code', empty: '저장된 최종검사 본검사가 없습니다.',
       head: '<th>검사일</th><th>모델</th><th>차수</th><th>검사자</th><th>검사 LOT</th><th>검사 수량</th><th>불량</th><th>출처</th><th>입력 시각</th><th></th>',
       row: r => `<tr><td>${e(r.inspection_date)}${dup(r)}</td><td>${e(r.model_code)}</td><td>${e(r.inspection_class)}</td><td>${e(r.inspector || '—')}</td><td style="text-align:left;max-width:220px">${e(r.lots || '—')}</td><td>${fmt(r.inspected_qty_ea)}</td><td>${fmt(r.defects)}</td><td>${src(r)}${edits(r)}</td><td class="muted">${e(typeof m13Time === 'function' ? m13Time(r.recorded_at) : r.recorded_at)}</td><td><button class="ghost small" type="button" data-jv="${e(r.run_id)}" data-jl="${e(r.model_code + ' ' + r.inspection_date + ' ' + (r.inspector || ''))}">삭제</button></td></tr>`
     } : {
-      dateKey: 'work_date', timeKey: 'recorded_at', dateLabel: '작업일', empty: `저장된 ${KO[kind]} 작업일보가 없습니다.`,
+      dateKey: 'work_date', timeKey: 'recorded_at', dateLabel: '작업일', gapBy: 'model_code', empty: `저장된 ${KO[kind]} 작업일보가 없습니다.`,
       head: '<th>작업일</th><th>모델</th><th>공정</th><th>LOT</th><th>생산 수량</th><th>불량</th><th>출처</th><th>입력 시각</th><th></th>',
       row: r => `<tr><td>${e(r.work_date)}${dup(r)}</td><td>${e(r.model_code)}</td><td>${e(PN[r.process_code] || r.process_code)}</td><td>${e(r.lot_code || '—')}</td><td>${fmt(r.qty)}</td><td>${fmt(r.defects)}</td><td>${src(r)}${edits(r)}</td><td class="muted">${e(typeof m13Time === 'function' ? m13Time(r.recorded_at) : r.recorded_at)}</td><td><button class="ghost small" type="button" data-jv="${e(r.run_id)}" data-jl="${e(r.model_code + ' ' + (PN[r.process_code] || '') + ' ' + r.work_date + ' ' + (r.lot_code || ''))}">삭제</button>${/WINDING|CA_PRESS/.test(r.process_code || '') ? `<button class="ghost small" type="button" style="margin-top:3px" title="리워크 일보 도입(10/16) 전에 조립 일보 양식에 적은 리워크 — 그날 권선·압입을 하루 전체 리워크로" data-jrw="${e(r.run_id)}" data-jl="${e(r.model_code + ' ' + r.work_date + ' 권선·압입')}">리워크로 바꾸기</button>` : ''}</td></tr>`
     };

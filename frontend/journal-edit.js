@@ -74,14 +74,24 @@
   }
   window.journalEditMarkUnsure = () => (window.pendingItems || []).forEach((it, k) => { if (it && it.ok) summary(k) });
 
-  function open(k) {
-    const tr = document.querySelector(`tr[data-i="${k}"]`); if (!tr) return;
-    const nx = tr.nextElementSibling; if (nx && nx.classList.contains('je-tr')) { nx.remove(); return }
-    const row = document.createElement('tr'); row.className = 'je-tr';
-    row.innerHTML = `<td colspan="${tr.children.length}" style="background:var(--edit-bg);text-align:left">${editorHtml(k, getItem(k).payload)}</td>`;
-    tr.after(row);
+  // (2026-11-20 사용자 의견) 지금 고치는 줄이 어디인지: 그 줄을 파란 테두리로 표시하고, 편집칸 맨 위에 '몇 번째 줄 · 날짜 · 모델 · 공정 · 쪽'을 보여 준다.
+  // 다른 줄의 편집칸은 자동으로 닫아 한 번에 한 줄만 열리게 한다(고친 값은 이미 저장 대상에 반영돼 있으므로 사라지지 않음).
+  function headHtml(k, p) {
+    const its = window.pendingItems || [];
+    const pg = p.source?.page ? ` · 원본 ${e(p.source.page)}쪽` : '';
+    return `<div class="je-head">✏ 지금 고치는 줄: <b>표의 ${k + 1}번째 줄</b> <small>(전체 ${its.length}줄)</small> · ${e(p.work_date || '날짜 없음')} ${e(p.shift || '')} · ${e(p.model || '')} · ${e(PROC[p.process] || p.process || '')}${pg}${p.inspector_raw ? ' · 검사자 ' + e(p.inspector_raw) : ''}</div>`;
   }
-  function redraw(k) { const tr = document.querySelector(`tr[data-i="${k}"]`), nx = tr?.nextElementSibling; if (nx && nx.classList.contains('je-tr')) { nx.remove(); open(k) } }
+  function closeRow(tr) { if (!tr) return; const nx = tr.nextElementSibling; if (nx && nx.classList.contains('je-tr')) nx.remove(); tr.classList.remove('je-cur') }
+  function open(k, keep) {
+    const tr = document.querySelector(`tr[data-i="${k}"]`); if (!tr) return;
+    const nx = tr.nextElementSibling; if (nx && nx.classList.contains('je-tr')) { if (keep) nx.remove(); else { summary(k); closeRow(tr); return } }
+    if (!keep) document.querySelectorAll('tr.je-cur').forEach(o => { if (o !== tr) { const j = +o.dataset.i; summary(j); closeRow(o) } });
+    const row = document.createElement('tr'); row.className = 'je-tr';
+    row.innerHTML = `<td colspan="${tr.children.length}" style="background:var(--edit-bg);text-align:left">${headHtml(k, getItem(k).payload)}${editorHtml(k, getItem(k).payload)}</td>`;
+    tr.after(row); tr.classList.add('je-cur');
+    if (!keep) tr.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+  function redraw(k) { const tr = document.querySelector(`tr[data-i="${k}"]`), nx = tr?.nextElementSibling; if (nx && nx.classList.contains('je-tr')) open(k, true) }
   // (2026-11-07 팀장) 조립 일보 한 장 = 권선(BA)·압입(CA) 두 줄: 작업자·비고는 같은 장이므로 한 번만 고치면 짝 줄에도 같이 반영
   const ASM = ['IMEB3_WINDING', 'IMEB3_CA_PRESS'];
   const SHARED = /^(workers_raw|remarks_raw)(\.|$)/;
@@ -133,10 +143,12 @@
     const box = t.closest && t.closest('.je'); if (!box) return; const k = +box.dataset.k, p = getItem(k).payload;
     if (t.dataset.jeAdd) { const blank = { inputs: { process: null, component: null, lot_date: null, raw: null }, materials: { material: 'IMEB3_RESIN', lot_date: null, raw: null, qty: null, unit: null, spindle: null }, defects: { name: '', qty: null, raw: null }, lots: { raw: '', marking_code: null, boxes: null }, workers_raw: { name: '', role: null } }[t.dataset.jeAdd]; p[t.dataset.jeAdd].push(blank); track(getItem(k), t.dataset.jeAdd + '.' + (p[t.dataset.jeAdd].length - 1) + '(추가)', null); if (t.dataset.jeAdd === 'workers_raw') syncShared(k); redraw(k); return }
     if (t.dataset.jeDel) { const [name, i] = t.dataset.jeDel.split('.'); const gone = JSON.stringify(p[name][+i] || {}).slice(0, 180); p[name].splice(+i, 1); const it = getItem(k); it._orig = it._orig || {}; it._orig[name + '.' + i + '(빼기)'] = gone; (p.source = p.source || {}).human_edits = [...(p.source.human_edits || []), { path: name + '.' + i + '(빼기)', ai: gone, value: null }]; it.edited = p.source.human_edits.length; window.journalEditCount && window.journalEditCount(); if (name === 'workers_raw') syncShared(k); redraw(k); return }
-    if (t.dataset.jeClose != null) { summary(k); const tr = document.querySelector(`tr[data-i="${k}"]`), nx = tr?.nextElementSibling; if (nx && nx.classList.contains('je-tr')) nx.remove(); if (tr) { tr.scrollIntoView({ block: 'center', behavior: 'smooth' }); tr.style.transition = 'background .8s'; tr.style.background = '#eaf7ea'; setTimeout(() => tr.style.background = '', 1200) } }
+    if (t.dataset.jeClose != null) { summary(k); const tr = document.querySelector(`tr[data-i="${k}"]`); closeRow(tr); if (tr) { tr.scrollIntoView({ block: 'center', behavior: 'smooth' }); tr.style.transition = 'background .8s'; tr.style.background = '#eaf7ea'; setTimeout(() => tr.style.background = '', 1200) } }
   });
   const css = document.createElement('style');
   css.textContent = `.je{font-size:12px}.je-grid{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:6px}.je label{display:inline-flex;gap:4px;align-items:center;font-weight:400}.je-wide{display:flex!important;margin:4px 0}.je-wide input{flex:1}
-  .je-list{margin:8px 0;padding:6px 8px;border:1px dashed #cfd6dd;border-radius:8px}.je-list>b{display:block;margin-bottom:4px}.je-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:3px 0}.je input,.je select{padding:3px 5px;font-size:12px;width:auto}`;
+  .je-list{margin:8px 0;padding:6px 8px;border:1px dashed #cfd6dd;border-radius:8px}.je-list>b{display:block;margin-bottom:4px}.je-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:3px 0}.je input,.je select{padding:3px 5px;font-size:12px;width:auto}
+  tr.je-cur>td{background:var(--cur-bg,#e3f0ff)!important;border-top:2px solid #1e6fd9;border-bottom:2px solid #1e6fd9}tr.je-cur>td:first-child{border-left:5px solid #1e6fd9}
+  tr.je-tr>td{border-left:5px solid #1e6fd9;border-bottom:2px solid #1e6fd9}:root{--cur-bg:#e3f0ff}[data-theme=dark]{--cur-bg:#16263d}.je-head{position:sticky;top:0;z-index:5;margin:-2px 0 8px;padding:6px 10px;background:#1e6fd9;color:#fff;border-radius:6px;font-size:13px}`;
   document.head.appendChild(css);
 })();
