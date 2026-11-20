@@ -651,6 +651,29 @@ class ChatIn(BaseModel):
 _conversations: dict[str, list[dict[str, Any]]] = {}   # conversation_id -> 최근 대화(서버 메모리, 재시작하면 비워짐)
 
 
+def _chat_range(calls: list[dict], q: str) -> dict | None:
+    """(2026-11-20 사용자 의견) 대화에서 기간을 물으면 대시보드 그래프 표시 구간도 그 기간으로.
+    1순위: AI 가 도구에 넣은 date_from·date_to(실제로 조회한 기간). 2순위: 질문의 'N월'(그 달 전체)."""
+    import calendar
+    import datetime as dt
+    ok = lambda x: isinstance(x, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", x)
+    for c in reversed(calls):
+        i = c.get("input") or {}
+        a, b = i.get("date_from"), i.get("date_to")
+        if c.get("error") or not (ok(a) or ok(b)):
+            continue
+        a, b = (a if ok(a) else b), (b if ok(b) else a)
+        if a > b:
+            a, b = b, a
+        return {"from": a, "to": b, "source": "tool"}
+    m = re.search(r"(?:(20\d{2})\s*년\s*)?(1[0-2]|[1-9])\s*월(?!\s*\d+\s*일)", q)
+    if m:
+        y = int(m.group(1) or dt.date.today().year)
+        mo = int(m.group(2))
+        return {"from": f"{y}-{mo:02d}-01", "to": f"{y}-{mo:02d}-{calendar.monthrange(y, mo)[1]:02d}", "source": "question"}
+    return None
+
+
 @router.post("/chat")
 def chat(body: ChatIn):
     q = (body.message or body.question or "").strip()
@@ -664,6 +687,9 @@ def chat(body: ChatIn):
         _conversations.pop(next(iter(_conversations)))
     vm = re.search(r"\b(HSV|OV|IV)\b", q.upper())
     ctx: dict[str, Any] = {"variant": vm.group(1)} if vm else {}
+    rng = _chat_range(out.get("tool_calls", []), q)
+    if rng:
+        ctx["range"] = rng
     # 사출조건 도구를 썼으면 같은 LOT 기준으로 사출 단계 그래프를 열도록 알려 준다.
     inj = [c for c in out.get("tool_calls", []) if c.get("tool") == "get_injection_conditions" and not c.get("error")]
     if inj:

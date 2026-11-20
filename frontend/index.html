@@ -823,7 +823,7 @@ function autoGrow(){const q=$('#question');q.style.height='auto';q.style.height=
 $('#question').addEventListener('input',autoGrow);
 $('#question').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('#chatForm').requestSubmit()} });
 const API_OVERRIDE=new URLSearchParams(location.search).get('api');const API_BASE=(API_OVERRIDE||window.API_BASE_URL||'').replace(/\/$/,'');
-function applyApiContext(c={}){if(c.variant&&['IV','OV','HSV','ALL'].includes(c.variant))variant=c.variant;if(c.injection)setInjectionAnchor(c.injection.lot||injectionLot,c.injection.model||'',true);render()}
+function applyApiContext(c={}){if(c.variant&&['IV','OV','HSV','ALL'].includes(c.variant))variant=c.variant;/* (2026-11-20) 대화에서 조회한 기간으로 그래프 표시 구간 맞춤 */if(c.range&&/^\d{4}-\d{2}-\d{2}$/.test(c.range.from||'')&&/^\d{4}-\d{2}-\d{2}$/.test(c.range.to||'')){axisStart=c.range.from;axisEnd=c.range.to;axisAuto=false;axisPreset=axisStart===axisEnd?'1':'custom';const a=$('#axisStart'),b=$('#axisEnd'),pr=$('#rangePreset');if(a)a.value=axisStart;if(b)b.value=axisEnd;if(pr)pr.value=axisPreset;try{typeof syncSubViewRange==='function'&&syncSubViewRange()}catch(_){}}if(c.injection)setInjectionAnchor(c.injection.lot||injectionLot,c.injection.model||'',true);render()}
 
 // ---- 추적 중 LOT · 현재 위치 (교체형 화면 공통): 대화창에서 물은 LOT 을 Supabase LOT 사슬(/api/lot/{lot})로 읽어 카드 맨 위 띠 + 공정 버튼 배지로 표시
 let trackChain=null,trackKey='',trackPromise=null;

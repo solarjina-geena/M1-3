@@ -28,6 +28,9 @@ SYSTEM = """당신은 제조 품질 데이터 분석 도우미입니다. 제품�
 - 답은 화면에 평문으로 보입니다. 마크다운 기호(**, #, |표)를 쓰지 말고 짧은 문장과 '- ' 목록으로 씁니다. 도구 결과의 내부 키 이름(found, first_gap 같은 영문)은 그대로 쓰지 말고 우리말로 풀어 씁니다.
 - 날짜와 공정으로 아래 방향 흐름을 물으면(예: "9/10 사출 LOT 흐름", "9/3 스티칭 LOT 이 언제 쓰였나") get_lot_flow(date, process) 를 씁니다. 공정 말이 없으면 process 는 IMEB3_CA_PRESS(제품) 입니다. 답은 뿌리 LOT 마다 "스티칭 언제 → 권선(BA) 언제 → 압입(CA) 언제 → 최종검사 언제(2차 본검사 수량, 1차·재검은 따로)" 순서로 요약하고, 다음 공정 연결이 없는 LOT 은 "연결된 다음 공정 기록 없음"이라고 합니다. 연결은 DB LOT 연결(후보 CANDIDATE 포함)만이며 추정하지 않습니다. 어느 LOT 이 어느 LOT 으로 이어졌는지는 결과의 links 목록만 근거로 말합니다.
 - LOT 번호로 물었는데 결과가 ambiguous(같은 번호가 여러 모델에 있음)면 candidates 의 모델마다 model 을 넣어 다시 조회하고 모델별로 나눠 답합니다. 질문에 공정이 있으면 get_lot_history 에 process 를 넣습니다(사출=IMEB3_INJECTION, 스티칭=IMEB3_STITCHING, 권선=IMEB3_WINDING, 압입·CA=IMEB3_CA_PRESS).
+- 기간 질문(예: 9월, 10월 4주, 10/1~10/15): 기간을 받는 도구(get_process_series, get_quality_results, get_inspection_breakdown, get_vision_false_reject, get_position_checks)에 date_from·date_to 를 YYYY-MM-DD 로 꼭 넣습니다. 연도가 없으면 2026년입니다. 'N월'은 그 달 1일~말일, 'N월 N주'는 그 달 1일부터 7일씩 끊은 N번째 주(1주 1~7일, 2주 8~14일, 3주 15~21일, 4주 22~28일, 5주 29일~말일)입니다. get_production_summary 는 전체 기간 합계라 기간 질문에는 쓰지 않습니다. 답 첫머리에 실제로 조회한 날짜(예: 9월(9/1~9/30))를 적습니다. 대시보드 그래프 표시 구간도 이 날짜로 맞춰집니다.
+- 비율·불량률·합계·차이·평균을 물으면 도구 결과의 숫자로 calculate 도구를 불러 계산합니다(머리로 계산하지 않음). 답에는 결과와 함께 계산식(분자 ÷ 분모)을 적습니다. 분모가 기록 없음이면 비율을 말하지 않고 이유를 말합니다.
+- 비전 가성불량(가성 비율·가성률·진성·비전 재검)을 물으면 get_vision_false_reject 를 씁니다. 가성률 = 가성 ÷ (진성 + 가성), 대시보드 '비전 불량' 화면과 같은 정의입니다. 생산량 대비 비율을 물으면 같은 기간 권선(IMEB3_WINDING) get_process_series 생산량 합으로 calculate 합니다.
 - 한국어로 간결하게 답합니다."""
 
 TOOLS: list[dict[str, Any]] = [
@@ -67,10 +70,71 @@ TOOLS: list[dict[str, Any]] = [
     {"name": "find_similar_judgments", "description": "새 항목과 비슷한 지난 판단(같은 종류, 제목·값이 비슷한 순). 제안의 근거로만 쓴다.",
      "input_schema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["READ_VALUE", "INSPECTION_LOT", "EVENT", "POSITION"]}, "text": {"type": "string"}},
                       "required": ["kind", "text"], "additionalProperties": False}},
+    {"name": "get_vision_false_reject", "description": "권선(BA) 비전 불량: 작업일보 비전 1·2·3차 불량 수량(설비가 걸러낸 수량)과, 걸러낸 것을 사람이 다시 본 재검 결과(가성/진성·진성 유형). 모델·재검 차수별 합계와 가성률(가성 ÷ (진성+가성), %)을 계산해서 돌려준다.",
+     "input_schema": {"type": "object", "properties": {"model": {"type": "string", "enum": ["IV", "OV", "HSV"]}, "date_from": {"type": "string"}, "date_to": {"type": "string"}},
+                      "additionalProperties": False}},
+    {"name": "calculate", "description": "사칙연산 계산기. 숫자와 + - * / ( ) 만 쓴 식을 계산해 돌려준다(예: '1234 / (1234 + 908) * 100'). 비율·불량률(%·PPM)·합계·차이·평균은 반드시 이 도구로 계산한다.",
+     "input_schema": {"type": "object", "properties": {"expression": {"type": "string"}, "label": {"type": "string", "description": "무엇을 계산하는지(예: 9월 IV 가성률 %)"}},
+                      "required": ["expression"], "additionalProperties": False}},
     {"name": "get_lot_chain_gaps", "description": "CA 제품 LOT 마다 수지→사출→스티칭→권선→압입 사슬이 어디까지 이어졌는지와 끊긴 첫 자리(first_gap).",
      "input_schema": {"type": "object", "properties": {"model": {"type": "string", "enum": ["IV", "OV", "HSV"]}, "only_gaps": {"type": "boolean"}, "limit": {"type": "integer"}},
                       "additionalProperties": False}},
 ]
+
+
+def safe_calc(expr: str) -> float:
+    """숫자와 + - * / ( ) 만 허용하는 계산(eval 을 쓰지 않음). 0 으로 나누면 오류."""
+    import ast
+    import operator as op
+    ops = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul, ast.Div: op.truediv}
+    text = str(expr).replace(",", "").replace("×", "*").replace("÷", "/").strip()
+    if len(text) > 300:
+        raise ValueError("식이 너무 깁니다")
+
+    def ev(n):
+        if isinstance(n, ast.Expression):
+            return ev(n.body)
+        if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)) and not isinstance(n.value, bool):
+            return float(n.value)
+        if isinstance(n, ast.BinOp) and type(n.op) in ops:
+            a, b = ev(n.left), ev(n.right)
+            if isinstance(n.op, ast.Div) and b == 0:
+                raise ValueError("0 으로 나눌 수 없습니다(분모가 0)")
+            return ops[type(n.op)](a, b)
+        if isinstance(n, ast.UnaryOp) and isinstance(n.op, (ast.USub, ast.UAdd)):
+            v = ev(n.operand)
+            return -v if isinstance(n.op, ast.USub) else v
+        raise ValueError("숫자와 + - * / ( ) 만 쓸 수 있습니다")
+    return ev(ast.parse(text, mode="eval"))
+
+
+def vision_false_reject(repo: Repository, model: str | None, date_from: str | None, date_to: str | None) -> dict:
+    """대시보드 '비전 불량' 화면과 같은 자료(repo.vision_summary)를 모델·차수별로 묶고 가성률을 계산한다."""
+    v = repo.vision_summary(model, date_from, date_to)
+    rej: dict = {}
+    for r in v.get("rejects") or []:
+        k = f"{r['model']} 비전{r['stage']}차"
+        rej[k] = rej.get(k, 0) + (r.get("qty") or 0)
+    grp: dict = {}
+    tot = {"inspected": 0, "false": 0, "true": 0}
+    types: dict = {}
+    for c in v.get("checks") or []:
+        g = grp.setdefault(f"{c['model']} 재검 {c['round']}차", {"inspected": 0, "false": 0, "true": 0, "days": set()})
+        for k in ("inspected", "false", "true"):
+            g[k] += c.get(k) or 0
+            tot[k] += c.get(k) or 0
+        g["days"].add(c["date"])
+        for n, q in (c.get("types") or {}).items():
+            types[n] = types.get(n, 0) + q
+    rate = lambda f, t: round(f / (f + t) * 100, 1) if (f + t) else None
+    out = {"date_from": date_from, "date_to": date_to, "model": model or "전체",
+           "work_journal_vision_rejects": rej or "기록 없음",
+           "recheck_by_model_round": {k: {"inspected": g["inspected"], "false_reject": g["false"], "true_defect": g["true"],
+                                          "false_rate_pct": rate(g["false"], g["true"]), "days": len(g["days"])} for k, g in sorted(grp.items())} or "기록 없음",
+           "recheck_total": {**tot, "false_rate_pct": rate(tot["false"], tot["true"])},
+           "true_defect_types": dict(sorted(types.items(), key=lambda kv: -kv[1])[:10]),
+           "definition": "가성률 = 가성 ÷ (진성 + 가성) × 100. 가성 = 비전이 불량으로 걸렀지만 사람이 다시 보니 양품"}
+    return out
 
 
 def run_tool(repo: Repository, name: str, args: dict) -> Any:
@@ -110,6 +174,11 @@ def run_tool(repo: Repository, name: str, args: dict) -> Any:
         return repo.judgment_log(args.get("lot_code") or None, args.get("kind"), args.get("model"), 50) or {"found": False, "note": "판단 기록 없음"}
     if name == "find_similar_judgments":
         return similar_judgments(repo, args["kind"], args["text"])
+    if name == "get_vision_false_reject":
+        return vision_false_reject(repo, args.get("model"), args.get("date_from"), args.get("date_to"))
+    if name == "calculate":
+        v = safe_calc(args["expression"])
+        return {"expression": args["expression"], "label": args.get("label"), "value": v, "rounded": round(v, 4)}
     if name == "get_lot_chain_gaps":
         rows = repo.chain_gaps(args.get("model"), bool(args.get("only_gaps")))
         return rows[: int(args.get("limit") or 30)]
