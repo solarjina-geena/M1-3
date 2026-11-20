@@ -127,6 +127,8 @@ class Defect(BaseModel):
     name: str
     qty: Optional[int] = Field(None, description="숫자로 읽을 수 없으면 비우고 raw 에 원문")
     raw: Optional[str] = None
+    # (2026-11-20) 흐린·흘려 쓴 숫자가 두 가지로 보일 때 다른 후보. 화면에서 사람이 고르는 데만 쓰고 저장하지 않는다(normalized 에서 뺌)
+    qty_alt: Optional[int] = Field(None, description="숫자가 두 가지로 보이면 qty 가 아닌 다른 후보(예 3 과 2)")
 
 
 class InspectionLot(BaseModel):
@@ -227,6 +229,8 @@ class JournalPayload(BaseModel):
             if l.get("boxes") is None and l.get("raw"):
                 mb = re.search(r"[=:]?\s*(\d+)\s*box", str(l["raw"]), re.I)
                 l["boxes"] = int(mb.group(1)) if mb else None
+        for x in d["defects"]:
+            x.pop("qty_alt", None)   # 판독 후보는 화면용, 저장하지 않음
         if self.process == "IMEB3_FINAL_INSPECTION":
             d["inspected_qty"] = self.gross_output_qty
         # ---- 사람 이름: 검사자·작업자 모두 가린 표시명만 남기고 원문은 버린다. 자유 문장에 같은 이름이 있으면 그 자리도 가린다.

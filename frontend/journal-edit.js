@@ -8,7 +8,7 @@
   const procOpts = cur => Object.entries(PROC).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v}</option>`).join('');
   const matOpts = cur => Object.entries(MATS).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${v}</option>`).join('') + (cur && !MATS[cur] ? `<option selected value="${e(cur)}">${e(cur)}</option>` : '');
   const sel = (path, cur, opts) => `<select data-p="${path}">${opts.map(([v, t]) => `<option value="${v}" ${String(cur ?? '') === String(v) ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
-  const inp = (path, v, ph = '', w = '', type = 'text') => `<input type="${type}" data-p="${path}" value="${e(v ?? '')}" placeholder="${e(ph)}" style="${w ? 'width:' + w + ';' : ''}${flag(v) ? 'background:var(--flag-bg);border-color:#e7ad00' : ''}">`;
+  const inp = (path, v, ph = '', w = '', type = 'text', hot = false) => `<input type="${type}" data-p="${path}" value="${e(v ?? '')}" placeholder="${e(ph)}" style="${w ? 'width:' + w + ';' : ''}${hot || flag(v) ? 'background:var(--flag-bg);border-color:#e7ad00' : ''}">`;
   const NUM = /(qty|minutes|boxes|sequence|inspection_round)$/;
   // 차수 한 칸: 1차검사 = FINAL·1차 / 본검사 = FINAL·2차 / 재검사 = REINSPECTION (2026-11-07 사용자)
   const clsOf = p => p.inspection_type === 'REINSPECTION' ? 'RE' : (String(p.inspection_round) === '1' ? 'FIRST' : 'MAIN');
@@ -46,6 +46,7 @@
         <label>순번 ${inp('sequence', p.sequence, '1', '60px', 'number')}</label>
         <label>${fin ? '검사량' : '생산량'} ${inp('gross_output_qty', p.gross_output_qty, '', '110px', 'number')}</label>
         <label>작업시간(분) ${inp('work_minutes', p.work_minutes, '', '90px', 'number')}</label>
+        <label title="일보에 불량 합계 칸이 있을 때 적힌 숫자. 불량 칸 합과 맞춰 봅니다">불량 합계(적힌 값) ${inp('defect_qty', p.defect_qty, '', '80px', 'number')}</label>
         ${fin ? `<label>차수 <select data-cls="1">${[['FIRST', '1차검사 (훈련·신입·지원, 합계 제외)'], ['MAIN', '본검사 (2차, 합계)'], ['RE', '재검사 (불량 이슈 재선별, 따로 집계)']].map(([v, t]) => `<option value="${v}" ${clsOf(p) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label><label>검사자 <small class="muted">(저장 시 가림)</small> ${inp('inspector_raw', p.inspector_raw, '', '110px')}</label>${clsOf(p) === 'RE' ? `<label>검사 내용(특이사항) ${inp('inspection_content', p.inspection_content, '현미경 검사 / 와이어 데미지 / 리드핀 찍힘', '200px')}</label>` : ''}` : ''}
       </div>
       <label class="je-wide">수량 원문 ${inp('raw_quantity_text', p.raw_quantity_text, '', '100%')}</label>
@@ -55,7 +56,8 @@
         : list('inputs', '투입 LOT (상위 공정) ★사슬', p.inputs, (r, b) => `<select data-p="${b}.process">${procOpts(r.process)}</select> ${sel(b + '.component', r.component, [['', '—'], ['BOBBIN', '보빈'], ['INSERT', '인서트']])} 날짜 ${inp(b + '.lot_date', r.lot_date, '2026-09-03', '120px')} 원문 ${inp(b + '.raw', r.raw, '9.3', '110px')}`, '투입 LOT')
         + list('materials', '원자재 LOT ★사슬', p.materials, (r, b) => `<select data-p="${b}.material">${matOpts(r.material)}</select> 날짜 ${inp(b + '.lot_date', r.lot_date, '2026-08-28', '120px')} 원문 ${inp(b + '.raw', r.raw, '8.28', '120px')} 수량 ${inp(b + '.qty', r.qty, '', '70px', 'number')} ${inp(b + '.unit', r.unit, 'kg', '45px')} 위치 ${inp(b + '.spindle', r.spindle, '1-1', '55px')}`, '원자재')
         + list('workers_raw', '작업자 (가려서 저장)', p.workers_raw, (r, b) => `${inp(b + '.name', r.name, '이름', '110px')} ${sel(b + '.role', r.role, [['', '작업자'], ['SETUP', '셋업'], ['SUPERVISOR', '반장·조장'], ['OTHER', '기타']])}`, '작업자')}
-      ${list('defects', '불량', p.defects, (r, b) => `${inp(b + '.name', r.name, '불량명', '170px')} 수량 ${inp(b + '.qty', r.qty, '', '70px', 'number')} 원문 ${inp(b + '.raw', r.raw, '', '110px')}`, '불량')}
+      ${list('defects', '불량', p.defects, (r, b) => `${inp(b + '.name', r.name, '불량명', '170px')} 수량 ${inp(b + '.qty', r.qty, '', '70px', 'number', r.qty_alt != null && r.qty_alt !== '')}${altChip(b, r)} 원문 ${inp(b + '.raw', r.raw, '', '110px')}`, '불량')}
+      <div class="je-dsum">${dsumHtml(p)}</div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="primary" type="button" data-je-close="${k}">고친 내용 반영하고 닫기</button><span class="muted">노란 칸 = AI 가 불확실·빈칸으로 남긴 곳. 고친 칸은 'AI 값 → 사람 값'으로 DB 출처 기록에 남습니다. 저장은 화면 아래 고정된 '모두 저장' 줄</span></div>
     </div>`;
   }
@@ -72,7 +74,33 @@
     cell(8, (p.lots || []).map(l => e(l.raw)).join('<br>'), (p.lots || []).map(l => l.raw).join(' '));
     const fw = tr.querySelector('.fin-who'); if (fw) fw.innerHTML = window.finWhoHtml ? window.finWhoHtml(p) : e(p.inspector_raw || '—');
   }
-  window.journalEditMarkUnsure = () => { (window.pendingItems || []).forEach((it, k) => { if (it && it.ok) summary(k) }); nameMarkRows() };
+  window.journalEditMarkUnsure = () => { (window.pendingItems || []).forEach((it, k) => { if (it && it.ok) summary(k) }); nameMarkRows(); checkMarkRows() };
+
+  // ── 불량 수량 확인(2026-11-20 사용자 의견: 불량 수량이 가장 많이 틀림) ──
+  // · AI 가 숫자를 두 가지로 본 칸(qty_alt)은 노란색 + '다른 후보 N · 바꾸기'
+  // · 일보에 적힌 불량 합계(defect_qty)와 불량 칸 합이 다르면 알림(어느 칸이 틀렸는지 찾게). 자동으로 고치지 않는다.
+  const numOr = v => (v === '' || v == null || isNaN(Number(v))) ? null : Number(v);
+  const altChip = (b, r) => r.qty_alt != null && r.qty_alt !== '' ? ` <span class="je-alt">다른 후보 <b>${e(r.qty_alt)}</b> <button class="ghost small" type="button" data-je-alt="${b}">바꾸기</button></span>` : '';
+  function dsum(p) {
+    const ds = (p.defects || []).map(d => numOr(d.qty)).filter(x => x != null), sum = ds.reduce((a, x) => a + x, 0), tot = numOr(p.defect_qty);
+    const alts = (p.defects || []).filter(d => d.qty_alt != null && d.qty_alt !== '').length;
+    return { sum, tot, alts, bad: tot != null && tot !== sum };
+  }
+  function dsumHtml(p) {
+    const c = dsum(p);
+    const head = `불량 칸 합 <b>${c.sum.toLocaleString()}</b>`;
+    if (c.tot == null) return `<span class="muted">${head} · 일보에 불량 합계 칸이 있으면 위 '불량 합계(적힌 값)'에 넣어 맞춰 보세요</span>`;
+    return c.bad ? `<span class="je-dbad">⚠ ${head} ≠ 적힌 합계 <b>${c.tot.toLocaleString()}</b> (차이 ${(c.tot - c.sum).toLocaleString()}) — 원본에서 불량 칸 숫자를 다시 확인하세요</span>`
+      : `<span class="ok">✔ ${head} = 적힌 합계 ${c.tot.toLocaleString()}</span>`;
+  }
+  function checkMarkRows() {
+    (window.pendingItems || []).forEach((it, k) => {
+      if (!it || !it.ok) return; const tr = document.querySelector(`tr[data-i="${k}"]`), st = tr && tr.querySelector('.st-cell'); if (!st) return;
+      st.querySelector('.je-dqb')?.remove();
+      const c = dsum(it.payload), msg = [c.bad ? `불량 합계 안 맞음(칸 합 ${c.sum} · 적힌 ${c.tot})` : '', c.alts ? `숫자 후보 2개인 칸 ${c.alts}` : ''].filter(Boolean).join(' · ');
+      if (msg) st.insertAdjacentHTML('beforeend', `<br><small class="je-dqb warn">불량 확인 · ${e(msg)}</small>`);
+    });
+  }
 
   // ── 이름 길잡이(2026-11-20 사용자 의견: 작업자·검사자 이름이 자주 틀림) ──
   // 그 공정에 저장된 이름(가운데 글자를 가린 이름)과 사람이 고친 기록(읽은 이름 → 실제 이름)을 서버에서 받아,
@@ -190,6 +218,7 @@
     setPath(it.payload, t.dataset.p, t.value);
     track(it, t.dataset.p, before);
     if (SHARED.test(t.dataset.p)) syncShared(k);
+    if (/^(defects\.\d+\.qty|defect_qty)$/.test(t.dataset.p)) { const ds = box.querySelector('.je-dsum'); if (ds) ds.innerHTML = dsumHtml(it.payload); checkMarkRows() }
     if (NAME_P.test(t.dataset.p)) { const sp = t.nextElementSibling; if (sp && sp.classList.contains('je-nmw')) sp.innerHTML = chipHtml(t.dataset.p, t.value); nameMarkRows() }
     if (t.dataset.p === 'inspection_type') { if (t.value === 'REINSPECTION' && !it.payload.inspection_round) it.payload.inspection_round = 2; redraw(k); }
     t.style.background = flag(t.value) ? 'var(--flag-bg)' : 'var(--ok-bg)'; t.style.borderColor = flag(t.value) ? '#e7ad00' : '#5cb85c';
@@ -201,6 +230,7 @@
     if (t.dataset.ed != null) { open(+t.dataset.ed); return }
     if (t.dataset.jeNm) { const i = t.closest('.je')?.querySelector(`input[data-p="${t.dataset.jeNm}"]`); if (i) { i.value = t.dataset.v; i.dispatchEvent(new Event('input', { bubbles: true })) } return }
     const box = t.closest && t.closest('.je'); if (!box) return; const k = +box.dataset.k, p = getItem(k).payload;
+    if (t.dataset.jeAlt) { const r = getPath(p, t.dataset.jeAlt), it = getItem(k); if (!r) return; const before = r.qty; r.qty = numOr(r.qty_alt); r.qty_alt = before; track(it, t.dataset.jeAlt + '.qty', before); checkMarkRows(); redraw(k); return }
     if (t.dataset.jeAdd) { const blank = { inputs: { process: null, component: null, lot_date: null, raw: null }, materials: { material: 'IMEB3_RESIN', lot_date: null, raw: null, qty: null, unit: null, spindle: null }, defects: { name: '', qty: null, raw: null }, lots: { raw: '', marking_code: null, boxes: null }, workers_raw: { name: '', role: null } }[t.dataset.jeAdd]; p[t.dataset.jeAdd].push(blank); track(getItem(k), t.dataset.jeAdd + '.' + (p[t.dataset.jeAdd].length - 1) + '(추가)', null); if (t.dataset.jeAdd === 'workers_raw') syncShared(k); redraw(k); return }
     if (t.dataset.jeDel) { const [name, i] = t.dataset.jeDel.split('.'); const gone = JSON.stringify(p[name][+i] || {}).slice(0, 180); p[name].splice(+i, 1); const it = getItem(k); it._orig = it._orig || {}; it._orig[name + '.' + i + '(빼기)'] = gone; (p.source = p.source || {}).human_edits = [...(p.source.human_edits || []), { path: name + '.' + i + '(빼기)', ai: gone, value: null }]; it.edited = p.source.human_edits.length; window.journalEditCount && window.journalEditCount(); if (name === 'workers_raw') syncShared(k); redraw(k); return }
     if (t.dataset.jeClose != null) { summary(k); const tr = document.querySelector(`tr[data-i="${k}"]`); closeRow(tr); if (tr) { tr.scrollIntoView({ block: 'center', behavior: 'smooth' }); tr.style.transition = 'background .8s'; tr.style.background = '#eaf7ea'; setTimeout(() => tr.style.background = '', 1200) } }
@@ -209,6 +239,6 @@
   css.textContent = `.je{font-size:12px}.je-grid{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:6px}.je label{display:inline-flex;gap:4px;align-items:center;font-weight:400}.je-wide{display:flex!important;margin:4px 0}.je-wide input{flex:1}
   .je-list{margin:8px 0;padding:6px 8px;border:1px dashed #cfd6dd;border-radius:8px}.je-list>b{display:block;margin-bottom:4px}.je-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:3px 0}.je input,.je select{padding:3px 5px;font-size:12px;width:auto}
   tr.je-cur>td{background:var(--cur-bg,#e3f0ff)!important;border-top:2px solid #1e6fd9;border-bottom:2px solid #1e6fd9}tr.je-cur>td:first-child{border-left:5px solid #1e6fd9}
-  tr.je-tr>td{border-left:5px solid #1e6fd9;border-bottom:2px solid #1e6fd9}:root{--cur-bg:#e3f0ff}[data-theme=dark]{--cur-bg:#16263d}.je-nmw{display:inline-flex;align-items:center}.je-nm{font-size:11px;margin-left:4px;padding:1px 6px;border-radius:8px}.je-nm.ok{color:#2e7d32}.je-nm.fx{background:var(--flag-bg);color:inherit}.je-nm.nw{color:#b26a00}.je-head{position:sticky;top:0;z-index:5;margin:-2px 0 8px;padding:6px 10px;background:#1e6fd9;color:#fff;border-radius:6px;font-size:13px}`;
+  tr.je-tr>td{border-left:5px solid #1e6fd9;border-bottom:2px solid #1e6fd9}:root{--cur-bg:#e3f0ff}[data-theme=dark]{--cur-bg:#16263d}.je-alt{font-size:11px;padding:1px 6px;border-radius:8px;background:var(--flag-bg)}.je-dsum{margin:-2px 0 6px;font-size:12px}.je-dbad{color:#c62828;font-weight:600}.je-nmw{display:inline-flex;align-items:center}.je-nm{font-size:11px;margin-left:4px;padding:1px 6px;border-radius:8px}.je-nm.ok{color:#2e7d32}.je-nm.fx{background:var(--flag-bg);color:inherit}.je-nm.nw{color:#b26a00}.je-head{position:sticky;top:0;z-index:5;margin:-2px 0 8px;padding:6px 10px;background:#1e6fd9;color:#fff;border-radius:6px;font-size:13px}`;
   document.head.appendChild(css);
 })();

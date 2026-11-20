@@ -41,6 +41,12 @@ PROMPT = """이 이미지는 iMEB3 제조 작업일보(사출·스티칭·조립
 
 규칙:
 - 숫자는 적힌 그대로 읽습니다. 읽을 수 없거나 불확실하면 그 항목은 비우고 raw 에 보이는 대로 적습니다. 추측해서 채우지 않습니다. 합산·조정하지 않습니다.
+- 불량 수량은 판독에서 가장 많이 틀리는 칸입니다. 칸마다 숫자를 한 자리씩 확인합니다:
+  · 작게 쓴 '1', 빨간 글씨, 칸 구석에 쓴 숫자도 수량입니다. 숫자가 있는데 빈칸(BLANK)으로 두지 않습니다.
+  · 줄을 긋거나 덧써서 고친 숫자는 마지막에 고쳐 쓴 숫자를 qty 에, 고치기 전 숫자는 raw 에 함께 적습니다.
+  · 자릿수를 빠뜨리거나 더하지 않습니다(예 48 을 4 로, 4 를 64 로).
+  · 한 숫자가 두 가지로 보이면(예 3 과 2, 7 과 2, 4 와 9) 더 그럴듯한 쪽을 qty 에, 다른 쪽을 qty_alt 에 적습니다. 확실하면 qty_alt 는 비웁니다.
+  · 일보에 불량 합계 칸(계·합계·불량수량)이 있으면 그 숫자를 defect_qty 에, 양품 수량 칸이 있으면 good_qty 에 적힌 그대로 적습니다(직접 계산해서 채우지 않음).
 - 날짜 표기('8.28', '7/22', '26.9.4')는 raw 에 원문 그대로 두고 lot_date 는 비워도 됩니다(서버가 정규화).
 - work_date 는 반드시 YYYY-MM-DD 형식으로 적습니다(연도가 없으면 요일·문맥으로 추정). 글자가 흐려 불확실하면 가장 그럴듯한 날짜를 적고 그 사정은 uncertain_notes 에 씁니다. work_date 에 'UNCERTAIN' 같은 글자를 넣지 않습니다.
 - iMEB3 작업일보만 읽습니다. 일보 제목·라인·품목(ITEM)이 iMEB3 가 아니면(예: 'MEB5 라인', 'TYCO Line', 'MEB5-Coil Ass'y', IDB 등) 양식에 IV/OV/HSV 칸이 인쇄되어 있거나 동그라미가 쳐져 있어도 journals 를 만들지 않고 uncertain_notes 에 '타 제품(라인) 일보 — 제외'라고만 적습니다.
@@ -204,6 +210,53 @@ def name_guide(kind: str | None) -> dict:
     return out
 
 
+_DQ_CACHE: dict = {}
+
+
+def _defect_qty_hint(kind: str | None) -> str:
+    """사람이 고친 불량 수량 기록(AI 값 → 사람 값)에서 이 현장 글씨의 헷갈리는 숫자 짝·빠뜨린 숫자를 모아 판독 요청에 붙인다."""
+    import time
+    from collections import Counter
+    grps = _GRPS.get(kind)
+    if not grps:
+        return ""
+    key = ",".join(grps)
+    hit = _DQ_CACHE.get(key)
+    if not hit or time.time() - hit[0] > 600:
+        digits, lens, missed = Counter(), Counter(), 0
+        try:
+            from ..repository.supabase import get_repository
+            rows = get_repository().c.select("m13_defect_qty_fixes", {"grp": "in.(" + key + ")"}, limit=5000)
+        except Exception:
+            rows = []
+        for r in rows:
+            a, v, n = (r.get("ai") or "").strip(), (r.get("value") or "").strip(), int(r.get("n") or 0)
+            if not v.isdigit():
+                continue
+            if not a:
+                missed += n
+            elif a.isdigit() and len(a) == len(v):
+                for x, y in zip(a, v):
+                    if x != y:
+                        digits[(x, y)] += n
+            elif a.isdigit():
+                lens[(a, v)] += n
+        hit = (time.time(), (digits, lens, missed))
+        _DQ_CACHE[key] = hit
+    digits, lens, missed = hit[1]
+    parts = []
+    if digits:
+        parts.append("헷갈린 숫자(읽은 숫자 → 실제): " + ", ".join(f"{x}→{y} {n}번" for (x, y), n in digits.most_common(10)))
+    if lens:
+        parts.append("자릿수 실수: " + ", ".join(f"{a}→{v}" for (a, v), _ in lens.most_common(5)))
+    if missed:
+        parts.append(f"숫자가 있는데 빈칸으로 둔 것 {missed}번")
+    if not parts:
+        return ""
+    return ("\n이 공정 일보의 불량 수량을 사람이 고친 기록 — " + " / ".join(parts) +
+            ". 이런 숫자는 특히 다시 확인하고, 두 가지로 보이면 qty_alt 에 다른 후보를 적습니다.")
+
+
 def _known_workers_hint(kind: str | None) -> str:
     """작업자는 잘 안 바뀐다(팀장 2026-11-07): 그 공정에 자주 나오는 사람(가운데 글자 가린 이름)과,
     사람이 고친 기록에서 자주 헷갈린 이름 짝을 힌트로 준다. 목록에 없으면 적힌 그대로 읽는다(추정해서 바꾸지 않음)."""
@@ -240,6 +293,7 @@ async def extract_from_image(data: bytes, media_type: str, filename: str, kind: 
                  "절연저항 불량 / 내경 불량 / 마킹 불량  (양식 인쇄 순서. '내전압'(전기)과 '내경'(치수)은 다른 줄이고, '내경압'이라는 줄은 없음)\n"
                  "작업자 이름은 근무 현황 칸에 적힌 그대로 읽습니다(같은 사람이 날마다 반복되는 경우가 많음).")
     hint += _known_workers_hint(kind)
+    hint += _defect_qty_hint(kind)
     if not settings.anthropic_key:
         raise RuntimeError("ANTHROPIC_API_KEY 가 backend/.env.personal 에 없습니다.")
     b64 = base64.standard_b64encode(data).decode("utf-8")
