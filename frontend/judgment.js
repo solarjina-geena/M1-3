@@ -10,14 +10,20 @@
     INSPECTION_LOT: { CONFIRMED: 'CA LOT 연결', UNRESOLVED: '미연결 유지', VOID: '삭제(VOID)' },
     EVENT: { VERIFIED: '확인', REJECTED: '반려', VOID: '삭제(VOID)' },
     POSITION: { VERIFIED: '확인', CORRECTED: '정정', NEEDS_REVIEW: '재측정 요청' },
+    DATA_CHECK: { VERIFIED: '원본과 맞음(그대로 둠)', NEEDS_FIX: '고칠 것(고칠 내용 기록)' },
   };
-  const KIND = { READ_VALUE: '판독값', INSPECTION_LOT: '검사 LOT', EVENT: '생산 이벤트', POSITION: '초품 위치도' };
+  const KIND = { READ_VALUE: '판독값', INSPECTION_LOT: '검사 LOT', EVENT: '생산 이벤트', POSITION: '초품 위치도', DATA_CHECK: '자료 점검' };
+  // (2026-11-20) 자료 점검 종류
+  const CHECK = { DEFECT_SUM: '불량 합계≠칸 합', RARE_NAME: '드문 이름', BA_CA_GAP: '권선·압입 수량 차이', NO_QTY: '검사량 빈칸' };
   const BASIS = { EXTRACTION_ERROR: '판독 오류', SOURCE_TYPO: '원본 오기', FORMAT_ERROR: '형식 오류', INCONSISTENT_SOURCE: '원본끼리 불일치', OTHER: '기타' };
   const DETAIL = {
     field_code: '항목', raw_value: '원문', extracted_value: '판독값', sheet: '시트', cell: '칸', review_note: '이전 메모',
     lot_code_raw: '원문 LOT', box_count: 'BOX', quantity_raw: '수량 원문', round_no: '차수', normalization: '판독 상태',
     event_type: '유형', description: '설명', duration_minutes: '시간(분)', start_at: '시작', source_file: '원본 파일', source_page: '쪽',
     spec_pos: 'SPEC ⌀', control_pos: '관리기준 ⌀', run_linked: 'CA 실행 연결',
+    check: '점검 내용', written_total: '적힌 불량 합계', cells_sum: '불량 칸 합', defects: '불량 칸', name: '이름', runs: '나온 횟수',
+    frequent_names: '같은 공정 자주 나오는 비슷한 이름', where: '나온 곳', ba_qty: '권선(BA) 생산량', ca_qty: '압입(CA) 생산량', diff_pct: '차이 %',
+    ba_source: 'BA 원본', ca_source: 'CA 원본', inspection_type: '검사 구분', inspector: '검사자', lots: '검사 LOT', fix_note: '기록된 고칠 내용',
   };
 
   // ---- 로그인 세션 (manage.html 과 같은 저장소)
@@ -96,7 +102,7 @@
       <small>항목을 누르면 아래에 확인·정정 칸이 열립니다. 판단은 팀 표에 남고 LOT 에 연결됩니다. 초품 위치도는 산포도 데이터라 여기 올리지 않습니다(불량이면 수정 후 같은 날 재측정으로 입력).${batch && sel.length > 1 ? ` <b>선택 ${sel.length}건 일괄 판단</b>` : ''}</small></div>`
       + (rows.length ? rows.slice(0, 60).map(q => `<div class="review-item" data-id="${esc(q.item_id)}"><div class="jq-row">
           ${batch ? `<input type="checkbox" data-sel="${esc(q.item_id)}" ${selected.has(q.item_id) ? 'checked' : ''} title="같은 종류끼리 20건까지 일괄 판단">` : ''}
-          <div class="jq-main" data-open="${esc(q.item_id)}"><span class="jq-tag">${esc(q.stage_label)}</span><span class="jq-tag">${esc(KIND[q.kind])}</span><b>${esc(q.model_code || '')} ${esc(q.item_date || '')}</b>${q.lot_code ? ` · LOT ${esc(q.lot_code)}` : ''}<br><small>${esc(q.title)}${q.kind === 'POSITION' && q.current_value ? ' · 최대 ⌀' + esc(Number(q.current_value).toFixed(3)) : ''}</small></div>
+          <div class="jq-main" data-open="${esc(q.item_id)}"><span class="jq-tag">${esc(q.stage_label)}</span><span class="jq-tag">${esc(KIND[q.kind])}</span>${q.kind === 'DATA_CHECK' && q.detail?.check_code ? `<span class="jq-tag">${esc(CHECK[q.detail.check_code] || q.detail.check_code)}</span>${q.detail.fix_note ? '<span class="jq-tag" style="background:#fff3cd">고칠 것 기록됨</span>' : ''}` : ''}<b>${esc(q.model_code || '')} ${esc(q.item_date || '')}</b>${q.lot_code ? ` · LOT ${esc(q.lot_code)}` : ''}<br><small>${esc(q.title)}${q.kind === 'POSITION' && q.current_value ? ' · 최대 ⌀' + esc(Number(q.current_value).toFixed(3)) : ''}</small></div>
           <button class="jq-open ${openId === q.item_id ? 'on' : ''}" data-open="${esc(q.item_id)}">${openId === q.item_id ? '닫기 ▴' : '확인·정정 ▸'}</button></div>
           ${openId === q.item_id ? card(q) : ''}</div>`).join('') + (rows.length > 60 ? `<div class="review-item"><small>외 ${rows.length - 60}건 — 위 칸이나 종류 칩으로 거르세요</small></div>` : '')
         : '<div class="review-item"><small>판단할 항목 없음</small></div>');
@@ -114,11 +120,13 @@
     if (openId) bindCard(queue.find(q => q.item_id === openId));
   }
 
-  const VALUE_KO = { UNCERTAIN_RAW_CODE: '원문 판독 불확실', UNRESOLVED: '미해결', OTHER: '기타', STOP: '정지', RESTART: '재가동', SETUP_CHANGE: '셋업 변경',
+  const PROC_KO = { IMEB3_INJECTION: '사출', IMEB3_STITCHING: '스티칭', IMEB3_WINDING: '권선', IMEB3_CA_PRESS: '압입' };
+  const VALUE_KO = { FINAL: '본검사', REINSPECTION: '재검', UNCERTAIN_RAW_CODE: '원문 판독 불확실', UNRESOLVED: '미해결', OTHER: '기타', STOP: '정지', RESTART: '재가동', SETUP_CHANGE: '셋업 변경',
     MAINTENANCE: '수리·보전', MATERIAL_CHANGE: '자재 교체', PRIMARY: '주 근거', CROSS_CHECK: '대조 근거', lot_code_raw: 'LOT 코드' };
   function detailList(q) {
     const d = q.detail || {};
-    const items = Object.entries(d).filter(([k, v]) => v !== null && v !== '' && k !== 'points' && DETAIL[k]).map(([k, v]) => `<dt>${esc(DETAIL[k])}</dt><dd>${esc(typeof v === 'boolean' ? (v ? '예' : '아니오') : (VALUE_KO[v] || v))}</dd>`);
+    const show = v => Array.isArray(v) ? v.map(x => x && typeof x === 'object' ? (x.name != null ? `${x.name} ${x.qty ?? '빈칸'}` : [x.date, x.process && (PROC_KO[x.process] || x.process), x.file, x.page && x.page + '쪽'].filter(Boolean).join(' ')) : x).join(' · ') : (typeof v === 'boolean' ? (v ? '예' : '아니오') : (VALUE_KO[v] || v));
+    const ORDER = ['check', 'fix_note'], items = Object.entries(d).sort((a, b) => (ORDER.includes(b[0]) ? 1 : 0) - (ORDER.includes(a[0]) ? 1 : 0) || ORDER.indexOf(a[0]) - ORDER.indexOf(b[0])).filter(([k, v]) => v !== null && v !== '' && k !== 'points' && DETAIL[k]).map(([k, v]) => `<dt>${esc(DETAIL[k])}</dt><dd>${esc(show(v))}</dd>`);
     if (Array.isArray(d.points) && q.kind !== 'POSITION') items.push(`<dt>벗어난 점</dt><dd>${d.points.map(p => `${p.side === 'L' ? '좌' : '우'}${p.no} ⌀${p.pos_xy} ${p.status}`).map(esc).join(', ')}</dd>`);
     return `<dl>${items.join('')}</dl>`;
   }
@@ -164,6 +172,7 @@
       if (q.kind === 'POSITION') posTable(q, decision === 'CORRECTED');
       if (decision === 'CORRECTED' && q.kind === 'POSITION') { }
       else if (decision === 'CORRECTED') h += `<label>정정값 (원문 칸은 그대로 남음)</label><input type="text" id="jqVal" value="${esc(q.current_value || '')}">`;
+      if (q.kind === 'DATA_CHECK' && decision === 'NEEDS_FIX') h += `<label>고칠 내용 (예: 가스 107 → 105, 이*룡 → 이*동, 검사량 4,800) — 실제 수정은 관리 화면에서</label><input type="text" id="jqVal" placeholder="${esc(q.current_value || '')}">`;
       if (q.kind === 'EVENT' && decision === 'VERIFIED') h += `<label>설명 정정 (선택 — 비우면 그대로)</label><input type="text" id="jqVal" placeholder="${esc(q.current_value || '')}">`;
       if (q.kind === 'INSPECTION_LOT' && decision === 'CONFIRMED') h += `<label>CA 제품 LOT 코드 (원본에서 직접 읽은 값만 · 추정 금지)</label><input type="text" id="jqLot" placeholder="예 260903D1">`;
       if (decision === 'CORRECTED' || decision === 'REJECTED') h += `<label>사유 (필수)</label><select id="jqBasis"><option value="">고르세요</option>${Object.entries(BASIS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select>`;
@@ -200,6 +209,7 @@
       if (note.length < 5) { msg.textContent = '메모를 5자 이상 적어 주세요'; return }
       const posVals = q.kind === 'POSITION' && decision === 'CORRECTED' ? [...document.querySelectorAll('#jqPos [data-pc]')].filter(i => i.value.trim() !== i.dataset.orig).map(i => i.dataset.pc + '|' + i.value.trim()) : null;
       const val = posVals ? (posVals[0] || null) : ($('#jqVal')?.value.trim() || null), basis = $('#jqBasis')?.value || null, lot = $('#jqLot')?.value.trim().toUpperCase() || null;
+      if (q.kind === 'DATA_CHECK' && decision === 'NEEDS_FIX' && !val) { msg.textContent = '고칠 내용을 적어 주세요'; return }
       if (decision === 'CORRECTED' && !val) { msg.textContent = q.kind === 'POSITION' ? '표에서 고칠 칸의 값을 바꿔 주세요' : '정정값을 적어 주세요'; return }
       if ((decision === 'CORRECTED' || decision === 'REJECTED') && !basis) { msg.textContent = '사유를 골라 주세요'; return }
       if (q.kind === 'POSITION' && decision === 'CORRECTED') {

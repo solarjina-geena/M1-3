@@ -1354,7 +1354,8 @@ def process_condition_window(lot: Optional[str] = Query(None, max_length=40), mo
 
 # ---------------------------------------------------------------- 사람 판단 기록 ('확인 필요' 탭의 판단 카드)
 KIND_DECISIONS = {"READ_VALUE": {"VERIFIED", "CORRECTED", "REJECTED"}, "INSPECTION_LOT": {"CONFIRMED", "UNRESOLVED", "VOID"},
-                  "EVENT": {"VERIFIED", "REJECTED", "VOID"}, "POSITION": {"VERIFIED", "CORRECTED", "NEEDS_REVIEW"}}
+                  "EVENT": {"VERIFIED", "REJECTED", "VOID"}, "POSITION": {"VERIFIED", "CORRECTED", "NEEDS_REVIEW"},
+                  "DATA_CHECK": {"VERIFIED", "NEEDS_FIX"}}   # (2026-11-20) 자료 점검 카드
 BASIS_CODES = {"EXTRACTION_ERROR", "SOURCE_TYPO", "FORMAT_ERROR", "INCONSISTENT_SOURCE", "OTHER"}   # field_review.review_reason_code 허용값
 _PII = re.compile(r"[0-9A-Za-z._%+-]+@[0-9A-Za-z.-]+\.[A-Za-z]{2,}|01[016789][- ]?\d{3,4}[- ]?\d{4}")
 

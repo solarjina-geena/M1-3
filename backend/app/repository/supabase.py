@@ -939,6 +939,9 @@ class SupabaseRepository(Repository):
     def judgment_save(self, payload: dict[str, Any]) -> dict:
         self._guard()
         payload.setdefault("actor", settings.actor)
+        if str(payload.get("item_id", "")).startswith("DATA_CHECK:"):
+            # (2026-11-20) 자료 점검 카드는 별도 RPC(mqi_ext.data_check 에 판단만 기록, 자료는 고치지 않음)
+            return self.c.rpc("m13_data_check_save", {"p": payload})
         return self.c.rpc("m13_judgment_save", {"p": payload})
 
 

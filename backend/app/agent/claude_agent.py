@@ -206,7 +206,8 @@ def similar_judgments(repo: Repository, kind: str, text: str, k: int = 5) -> lis
 DECISION_LABEL = {"READ_VALUE": {"VERIFIED": "확인", "CORRECTED": "정정", "REJECTED": "반려"},
                   "INSPECTION_LOT": {"CONFIRMED": "CA LOT 연결", "UNRESOLVED": "미연결 유지", "VOID": "삭제(VOID)"},
                   "EVENT": {"VERIFIED": "확인", "REJECTED": "반려", "VOID": "삭제(VOID)"},
-                  "POSITION": {"VERIFIED": "확인", "CORRECTED": "정정", "NEEDS_REVIEW": "재측정 요청"}}
+                  "POSITION": {"VERIFIED": "확인", "CORRECTED": "정정", "NEEDS_REVIEW": "재측정 요청"},
+                  "DATA_CHECK": {"VERIFIED": "원본과 맞음", "NEEDS_FIX": "고칠 것"}}
 
 
 def suggest_judgment(repo: Repository, item: dict) -> dict:
