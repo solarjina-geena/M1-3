@@ -72,7 +72,65 @@
     cell(8, (p.lots || []).map(l => e(l.raw)).join('<br>'), (p.lots || []).map(l => l.raw).join(' '));
     const fw = tr.querySelector('.fin-who'); if (fw) fw.innerHTML = window.finWhoHtml ? window.finWhoHtml(p) : e(p.inspector_raw || '—');
   }
-  window.journalEditMarkUnsure = () => (window.pendingItems || []).forEach((it, k) => { if (it && it.ok) summary(k) });
+  window.journalEditMarkUnsure = () => { (window.pendingItems || []).forEach((it, k) => { if (it && it.ok) summary(k) }); nameMarkRows() };
+
+  // ── 이름 길잡이(2026-11-20 사용자 의견: 작업자·검사자 이름이 자주 틀림) ──
+  // 그 공정에 저장된 이름(가운데 글자를 가린 이름)과 사람이 고친 기록(읽은 이름 → 실제 이름)을 서버에서 받아,
+  // 고치기 칸의 이름 옆에 '명단에 있음 / 자주 헷갈림 → 바꾸기 / 처음 보는 이름'을 보여 주고, 명단에서 골라 넣을 수 있게 한다.
+  // 실명은 DB 에 없으므로 비교는 가린 이름(성·끝 글자)끼리. 자동으로 바꾸지는 않는다(사람이 단추로 고름).
+  const NG = window.__nameGuide = window.__nameGuide || {};
+  const kindNow = () => window.journalKind || 'MIXED';
+  const maskJs = raw => { if (raw == null) return ''; let t = String(raw).trim(); if (!t) return '';
+    t = t.replace(/[가-힣]{2,4}/g, n => n.length > 2 ? n[0] + '*'.repeat(n.length - 2) + n.at(-1) : n[0] + '*');
+    return t.replace(/[A-Za-z]{2,}/g, w => w.length > 2 ? w[0] + '*'.repeat(w.length - 2) + w.at(-1) : w[0] + '*').slice(0, 60) };
+  async function loadNames(kind) {
+    kind = kind || kindNow(); if (NG[kind] && NG[kind] !== 'loading') return NG[kind];
+    if (NG[kind] === 'loading') return null; NG[kind] = 'loading';
+    try { NG[kind] = await api('/api/worker-names?kind=' + encodeURIComponent(kind), { authed: true }) } catch (_) { delete NG[kind]; return null }
+    nameMarkRows(); return NG[kind];
+  }
+  function nameCheck(raw) {
+    const g = NG[kindNow()]; if (!g || g === 'loading' || !raw || flag(raw)) return null;
+    const m = maskJs(raw), hit = (g.names || []).find(x => x.name === m), fx = (g.fixes || []).filter(f => f.ai === m && f.n >= 2);
+    if (fx.length) return { st: 'fix', m, to: fx[0].value, n: fx[0].n, known: !!(hit && !hit.rare) };
+    if (hit && !hit.rare) return { st: 'ok', m, runs: hit.runs };
+    if (hit) return { st: 'rare', m, runs: hit.runs };
+    return { st: 'new', m };
+  }
+  function chipHtml(path, raw) {
+    const c = nameCheck(raw); if (!c) return '';
+    if (c.st === 'ok') return `<span class="je-nm ok">✔ 명단에 있음(${c.runs}번)</span>`;
+    if (c.st === 'fix') return `<span class="je-nm fx">자주 헷갈린 이름: ${e(c.m)} → ${e(c.to)} (${c.n}번 고침)${c.known ? ' · 두 사람 모두 명단에 있으니 원본 확인' : ''} <button class="ghost small" type="button" data-je-nm="${path}" data-v="${e(c.to)}">바꾸기: ${e(c.to)}</button></span>`;
+    if (c.st === 'rare') return `<span class="je-nm nw">거의 안 나온 이름(${c.runs}번) — 원본 확인</span>`;
+    return `<span class="je-nm nw">처음 보는 이름 — 원본 확인(새 작업자면 그대로)</span>`;
+  }
+  const NAME_P = /^(workers_raw\.\d+\.name|inspector_raw)$/;
+  function nameDecorate(root) {
+    const g = NG[kindNow()];
+    if (!g || g === 'loading') { loadNames().then(x => x && root.isConnected && nameDecorate(root)); return }
+    let dl = document.getElementById('je-names');
+    if (!dl) { dl = document.createElement('datalist'); dl.id = 'je-names'; document.body.appendChild(dl) }
+    dl.innerHTML = (g.names || []).filter(x => !x.rare).map(x => `<option value="${e(x.name)}">${x.runs}번</option>`).join('');
+    root.querySelectorAll('input[data-p]').forEach(i => {
+      if (!NAME_P.test(i.dataset.p)) return;
+      i.setAttribute('list', 'je-names'); i.title = '명단(가린 이름)에서 고를 수 있습니다';
+      let sp = i.nextElementSibling; if (!sp || !sp.classList.contains('je-nmw')) { sp = document.createElement('span'); sp.className = 'je-nmw'; i.after(sp) }
+      sp.innerHTML = chipHtml(i.dataset.p, i.value);
+    });
+  }
+  function nameMarkRows() {
+    const g = NG[kindNow()]; if (!g || g === 'loading') { if (!g) loadNames(); return }
+    (window.pendingItems || []).forEach((it, k) => {
+      if (!it || !it.ok) return; const p = it.payload, tr = document.querySelector(`tr[data-i="${k}"]`); if (!tr) return;
+      const st = tr.querySelector('.st-cell'); if (!st) return; st.querySelector('.je-nmb')?.remove();
+      const bad = [p.inspector_raw, ...(p.workers_raw || []).map(w => w && w.name)].filter(Boolean).map(n => nameCheck(n)).filter(c => c && c.st !== 'ok');
+      if (!bad.length) return;
+      const t = bad.map(c => c.st === 'fix' ? `${c.m} → ${c.to}?` : c.m + (c.st === 'new' ? ' 처음 보는 이름' : ' 거의 안 나옴')).join(', ');
+      st.insertAdjacentHTML('beforeend', `<br><small class="je-nmb warn" title="${e(t)}">이름 확인 ${bad.length} · ${e(t)}</small>`);
+    });
+  }
+  document.querySelectorAll('#tabs [data-kind]').forEach(b => b.addEventListener('click', () => setTimeout(() => loadNames(b.dataset.kind), 0)));
+  setTimeout(() => loadNames(), 800);
 
   // (2026-11-20 사용자 의견) 지금 고치는 줄이 어디인지: 그 줄을 파란 테두리로 표시하고, 편집칸 맨 위에 '몇 번째 줄 · 날짜 · 모델 · 공정 · 쪽'을 보여 준다.
   // 다른 줄의 편집칸은 자동으로 닫아 한 번에 한 줄만 열리게 한다(고친 값은 이미 저장 대상에 반영돼 있으므로 사라지지 않음).
@@ -88,7 +146,7 @@
     if (!keep) document.querySelectorAll('tr.je-cur').forEach(o => { if (o !== tr) { const j = +o.dataset.i; summary(j); closeRow(o) } });
     const row = document.createElement('tr'); row.className = 'je-tr';
     row.innerHTML = `<td colspan="${tr.children.length}" style="background:var(--edit-bg);text-align:left">${headHtml(k, getItem(k).payload)}${editorHtml(k, getItem(k).payload)}</td>`;
-    tr.after(row); tr.classList.add('je-cur');
+    tr.after(row); tr.classList.add('je-cur'); nameDecorate(row);
     if (!keep) tr.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }
   function redraw(k) { const tr = document.querySelector(`tr[data-i="${k}"]`), nx = tr?.nextElementSibling; if (nx && nx.classList.contains('je-tr')) open(k, true) }
@@ -132,6 +190,7 @@
     setPath(it.payload, t.dataset.p, t.value);
     track(it, t.dataset.p, before);
     if (SHARED.test(t.dataset.p)) syncShared(k);
+    if (NAME_P.test(t.dataset.p)) { const sp = t.nextElementSibling; if (sp && sp.classList.contains('je-nmw')) sp.innerHTML = chipHtml(t.dataset.p, t.value); nameMarkRows() }
     if (t.dataset.p === 'inspection_type') { if (t.value === 'REINSPECTION' && !it.payload.inspection_round) it.payload.inspection_round = 2; redraw(k); }
     t.style.background = flag(t.value) ? 'var(--flag-bg)' : 'var(--ok-bg)'; t.style.borderColor = flag(t.value) ? '#e7ad00' : '#5cb85c';
     const st = document.querySelector(`tr[data-i="${k}"] .st-cell`); if (st && !st.dataset.edited) { st.dataset.edited = '1'; st.insertAdjacentHTML('beforeend', '<br><small class="warn">수정됨(저장 전)</small>') }
@@ -140,6 +199,7 @@
   document.addEventListener('click', ev => {
     const t = ev.target; if (!t.dataset) return;
     if (t.dataset.ed != null) { open(+t.dataset.ed); return }
+    if (t.dataset.jeNm) { const i = t.closest('.je')?.querySelector(`input[data-p="${t.dataset.jeNm}"]`); if (i) { i.value = t.dataset.v; i.dispatchEvent(new Event('input', { bubbles: true })) } return }
     const box = t.closest && t.closest('.je'); if (!box) return; const k = +box.dataset.k, p = getItem(k).payload;
     if (t.dataset.jeAdd) { const blank = { inputs: { process: null, component: null, lot_date: null, raw: null }, materials: { material: 'IMEB3_RESIN', lot_date: null, raw: null, qty: null, unit: null, spindle: null }, defects: { name: '', qty: null, raw: null }, lots: { raw: '', marking_code: null, boxes: null }, workers_raw: { name: '', role: null } }[t.dataset.jeAdd]; p[t.dataset.jeAdd].push(blank); track(getItem(k), t.dataset.jeAdd + '.' + (p[t.dataset.jeAdd].length - 1) + '(추가)', null); if (t.dataset.jeAdd === 'workers_raw') syncShared(k); redraw(k); return }
     if (t.dataset.jeDel) { const [name, i] = t.dataset.jeDel.split('.'); const gone = JSON.stringify(p[name][+i] || {}).slice(0, 180); p[name].splice(+i, 1); const it = getItem(k); it._orig = it._orig || {}; it._orig[name + '.' + i + '(빼기)'] = gone; (p.source = p.source || {}).human_edits = [...(p.source.human_edits || []), { path: name + '.' + i + '(빼기)', ai: gone, value: null }]; it.edited = p.source.human_edits.length; window.journalEditCount && window.journalEditCount(); if (name === 'workers_raw') syncShared(k); redraw(k); return }
@@ -149,6 +209,6 @@
   css.textContent = `.je{font-size:12px}.je-grid{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:6px}.je label{display:inline-flex;gap:4px;align-items:center;font-weight:400}.je-wide{display:flex!important;margin:4px 0}.je-wide input{flex:1}
   .je-list{margin:8px 0;padding:6px 8px;border:1px dashed #cfd6dd;border-radius:8px}.je-list>b{display:block;margin-bottom:4px}.je-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:3px 0}.je input,.je select{padding:3px 5px;font-size:12px;width:auto}
   tr.je-cur>td{background:var(--cur-bg,#e3f0ff)!important;border-top:2px solid #1e6fd9;border-bottom:2px solid #1e6fd9}tr.je-cur>td:first-child{border-left:5px solid #1e6fd9}
-  tr.je-tr>td{border-left:5px solid #1e6fd9;border-bottom:2px solid #1e6fd9}:root{--cur-bg:#e3f0ff}[data-theme=dark]{--cur-bg:#16263d}.je-head{position:sticky;top:0;z-index:5;margin:-2px 0 8px;padding:6px 10px;background:#1e6fd9;color:#fff;border-radius:6px;font-size:13px}`;
+  tr.je-tr>td{border-left:5px solid #1e6fd9;border-bottom:2px solid #1e6fd9}:root{--cur-bg:#e3f0ff}[data-theme=dark]{--cur-bg:#16263d}.je-nmw{display:inline-flex;align-items:center}.je-nm{font-size:11px;margin-left:4px;padding:1px 6px;border-radius:8px}.je-nm.ok{color:#2e7d32}.je-nm.fx{background:var(--flag-bg);color:inherit}.je-nm.nw{color:#b26a00}.je-head{position:sticky;top:0;z-index:5;margin:-2px 0 8px;padding:6px 10px;background:#1e6fd9;color:#fff;border-radius:6px;font-size:13px}`;
   document.head.appendChild(css);
 })();

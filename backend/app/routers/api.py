@@ -1229,6 +1229,14 @@ def final_entries(model: Optional[str] = Query(None, pattern="^(IV|OV|HSV)$"), a
     return _wrap(_repo().final_entries, model)
 
 
+@router.get("/worker-names")
+def worker_names(kind: Optional[str] = Query(None, pattern="^(INJECTION|STITCHING|ASSEMBLY|MIXED|FINAL_INSPECTION)$"), authorization: Optional[str] = Header(None)):
+    """이름 길잡이(관리 화면 고치기 칸): 그 공정에 저장된 이름(가린 이름)·횟수와 사람이 고친 이름 짝. 실명 없음."""
+    _admin(authorization)
+    from ..ingest.image import name_guide
+    return name_guide(kind or "MIXED")
+
+
 @router.post("/final/void")
 def final_void(body: JournalVoidIn, authorization: Optional[str] = Header(None)):
     """잘못·중복 저장한 최종검사 본검사 1건 삭제(VOID): 검사 LOT·불량·재검 연결·출처 연결 함께."""

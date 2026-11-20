@@ -161,38 +161,67 @@ KIND_KO = {"INJECTION": "사출", "STITCHING": "스티칭(BS)", "ASSEMBLY": "조
 
 
 _KW_CACHE: dict = {}
+_GRPS = {"INJECTION": ["INJECTION"], "STITCHING": ["STITCHING"], "ASSEMBLY": ["ASSEMBLY"], None: ["INJECTION", "ASSEMBLY"],
+         "MIXED": ["INJECTION", "ASSEMBLY"], "FINAL_INSPECTION": ["FINAL"]}
+
+
+def name_guide(kind: str | None) -> dict:
+    """이름 길잡이(2026-11-20 사용자 의견: 작업자 이름이 자주 틀림). 모두 가운데 글자를 가린 이름이다(실명은 DB 에 없음).
+    - names: 이 공정에서 저장된 이름과 일한 횟수(많은 순). 1~2번만 나온 이름은 잘못 읽혀 저장된 것일 수 있어 rare=True
+    - fixes: 사람이 고치기 화면에서 바꾼 기록 'AI 가 읽은 이름 → 고친 이름'(횟수 많은 순)"""
+    import time
+    grps = _GRPS.get(kind)
+    if not grps:
+        return {"names": [], "fixes": []}
+    key = ",".join(grps)
+    hit = _KW_CACHE.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    names: dict[str, dict] = {}
+    fixes: dict[tuple, int] = {}
+    try:
+        from ..repository.supabase import get_repository
+        c = get_repository().c
+        flt = {"grp": "in.(" + key + ")"}
+        for r in c.select("m13_worker_name_stats", dict(flt), limit=5000):
+            n = r.get("name")
+            if not n or "*" not in n:
+                continue
+            x = names.setdefault(n, {"name": n, "runs": 0, "last_date": None})
+            x["runs"] += int(r.get("runs") or 0)
+            x["last_date"] = max(filter(None, [x["last_date"], r.get("last_date")]), default=None)
+        for r in c.select("m13_worker_name_fixes", dict(flt), limit=5000):
+            k = (r.get("ai"), r.get("value"))
+            fixes[k] = fixes.get(k, 0) + int(r.get("n") or 0)
+    except Exception:
+        return {"names": [], "fixes": []}
+    nl = sorted(names.values(), key=lambda x: (-x["runs"], x["name"]))
+    for x in nl:
+        x["rare"] = x["runs"] < 3
+    fl = [{"ai": a, "value": v, "n": n} for (a, v), n in sorted(fixes.items(), key=lambda kv: -kv[1])]
+    out = {"names": nl, "fixes": fl}
+    _KW_CACHE[key] = (time.time(), out)
+    return out
 
 
 def _known_workers_hint(kind: str | None) -> str:
-    """작업자는 잘 안 바뀐다(팀장 2026-11-07): 그 공정에 이미 있는 작업자(가운데 글자 가린 표시명)를 힌트로 준다.
-    흘려 쓴 이름을 기존 사람 중에서 맞추도록 — 실명은 DB 에 없으므로 성·끝 글자로만 맞춘다. 목록에 없으면 적힌 그대로."""
-    import time
-    procs = {"INJECTION": ["IMEB3_INJECTION"], "STITCHING": ["IMEB3_STITCHING"], "ASSEMBLY": ["IMEB3_WINDING", "IMEB3_CA_PRESS"],
-             None: ["IMEB3_INJECTION", "IMEB3_WINDING", "IMEB3_CA_PRESS"], "FINAL_INSPECTION": ["FINAL"]}.get(kind)
-    if not procs:
+    """작업자는 잘 안 바뀐다(팀장 2026-11-07): 그 공정에 자주 나오는 사람(가운데 글자 가린 이름)과,
+    사람이 고친 기록에서 자주 헷갈린 이름 짝을 힌트로 준다. 목록에 없으면 적힌 그대로 읽는다(추정해서 바꾸지 않음)."""
+    g = name_guide(kind)
+    common = [x for x in g["names"] if not x["rare"]][:30]
+    if not common:
         return ""
-    key = ",".join(procs)
-    hit = _KW_CACHE.get(key)
-    if not hit or time.time() - hit[0] > 600:
-        try:
-            from ..repository.supabase import get_repository
-            c = get_repository().c
-            if procs == ["FINAL"]:
-                rows = c.select("m13_final_entries", {"select": "inspector"}, limit=5000)
-                from collections import Counter
-                cnt = Counter(r["inspector"] for r in rows if r.get("inspector"))
-                names = {n for n, k in cnt.items() if k >= 3}      # 한두 번만 나온 이름은 잘못 읽힌 것일 수 있어 뺀다
-            else:
-                rows = c.select("m13_worker_names_by_process", {"process_code": "in.(" + key + ")"}, limit=5000)
-                names = {r["worker_display_name"] for r in rows if r.get("worker_display_name")}
-        except Exception:
-            names = set()
-        hit = (time.time(), sorted(n for n in names if "*" in n))
-        _KW_CACHE[key] = hit
-    if not hit[1]:
-        return ""
-    return ("\n이 공정에서 이미 일한 작업자(가운데 글자를 가린 이름): " + ", ".join(hit[1][:40]) +
-            ". 작업자는 잘 바뀌지 않으니, 흘려 쓴 이름은 성·끝 글자가 맞는 이 중 사람으로 판단합니다. 다만 이 목록은 가운데 글자를 가린 것이므로 inspector_raw · workers_raw · 재검 inspector_raw 에는 * 를 쓰지 말고 사진에 적힌 이름 전체(가운데 글자 포함)를 그대로 적습니다(서버가 저장할 때 가립니다). 확실히 다른 사람이면 적힌 그대로 읽습니다.")
+    txt = ("\n이 공정에 자주 나오는 사람(가운데 글자를 가린 이름, 괄호 = 저장된 일보 수): "
+           + ", ".join(f"{x['name']}({x['runs']})" for x in common)
+           + ". 작업자는 잘 바뀌지 않으니, 흘려 쓴 이름은 성·끝 글자가 맞는 이 중 사람인지 먼저 확인합니다.")
+    fx = [f for f in g["fixes"] if f["n"] >= 2][:15]
+    if fx:
+        txt += (" 예전에 자주 잘못 읽어 사람이 고친 것(읽은 이름 → 실제 이름): "
+                + ", ".join(f"{f['ai']} → {f['value']}({f['n']}번)" for f in fx)
+                + ". 글씨가 이렇게 보이면 실제 이름 쪽일 가능성이 큽니다. 그래도 글씨가 분명히 다르면 적힌 그대로 읽고, 헷갈리면 uncertain_notes 에 적습니다.")
+    txt += (" 이 목록은 가운데 글자를 가린 것이므로 inspector_raw · workers_raw · 재검 inspector_raw 에는 * 를 쓰지 말고 "
+            "사진에 적힌 이름 전체(가운데 글자 포함)를 그대로 적습니다(서버가 저장할 때 가립니다).")
+    return txt
 
 
 async def extract_from_image(data: bytes, media_type: str, filename: str, kind: str | None = None) -> dict:
