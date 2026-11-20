@@ -23,6 +23,8 @@ PROMPT = """이 이미지는 iMEB3 제조 작업일보(사출·스티칭·조립
 공정별로 반드시 읽어야 하는 항목 (칸이 비어 있으면 raw 에 'BLANK', 못 읽으면 'UNCERTAIN' 이라고 적되 항목 자체는 빼지 마세요):
 - 사출(BB, IMEB3_INJECTION): 생산량(주/야 따로면 둘 다), 수지(RESIN) LOT 과 사용량(kg), 수지 품명/코드(equipment_raw 나 raw 에), 설비/금형, 불량.
 - 스티칭(BS, IMEB3_STITCHING): 생산량, 투입 보빈 LOT 날짜(inputs, component=BOBBIN), 리드핀(LEAD_PIN) 입고 LOT 날짜(materials), 불량(위치도·전장 등), 작업시간.
+  스티칭 양식은 주간·야간 두 칸이고 칸마다 Type 명(모델)이 다를 수 있습니다. 칸마다 그 모델로 항목을 만듭니다.
+  새 양식(2026-10-21~)의 '공정검사' 시간대별 칸에 적힌 내용은 source.note 에 '공정검사: 시간대 → 적힌 내용' 형태로 그대로 남깁니다(불량 칸에 옮기거나 합산하지 않음).
 - 권선 BA(IMEB3_WINDING): 생산량, 인서트(리드핀 인서트 보빈) LOT 날짜(inputs, component=INSERT ← 스티칭 LOT), 보빈 LOT 날짜(inputs, component=BOBBIN),
   와이어(WIRE) LOT — 스핀들/열별로 날짜가 여러 개면 전부 materials 에 각각(spindle 표기), 리드핀 LOT 이 적혀 있으면 materials 에, 프로그램/턴/설비(equipment_raw),
   불량(비전1차·비전2차·용접·SET-UP 등), 작업시간, 비고.

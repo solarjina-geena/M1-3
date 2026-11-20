@@ -197,6 +197,66 @@
       <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="primary" type="button" data-je-close="${k}">고친 내용 반영하고 닫기</button><span class="muted">노란 칸 = AI 가 불확실·빈칸으로 남긴 곳 · 빈칸에 숫자를 넣으면 그 불량·자재 줄이 새로 생깁니다 · 저장은 화면 아래 '모두 저장'</span></div></div>`;
   }
 
+  // ── (2026-11-20) 스티칭(BS) 작업일보 고치기를 '일보 양식 배치'로 (양식 REV2: 주간·야간 두 칸) ──
+  // 종이: Type 명 · 작업자명 · 생산량 · 작업시간 · 불량수량(위치도·전장·기타) / Lead Pin 입고일자 (1)(2) · Bobbin 생산일자 (1)(2) / 공정검사(10/21 추가) / 특이사항
+  // 주간·야간이 다른 모델일 수 있어 같은 파일·쪽·작업일의 주간 줄과 야간 줄을 짝으로 묶는다(모델은 칸마다).
+  const ST_DEF = [['위치도', '위치도'], ['전장', '전장']];
+  function stPair(k) {
+    const a = getItem(k).payload, f = a.source?.file || a.source?.filename || '', pg = String(a.source?.page ?? '');
+    const same = (window.pendingItems || []).map((it, j) => [it, j]).filter(([it]) => it && it.ok && !it._skip && it.payload?.process === 'IMEB3_STITCHING'
+      && it.payload.work_date === a.work_date && String(it.payload.source?.file || it.payload.source?.filename || '') === f && String(it.payload.source?.page ?? '') === pg);
+    const pick = sh => { const m = same.filter(([it]) => (it.payload.shift || 'D') === sh).map(([, j]) => j); return m.includes(k) ? k : (m[0] ?? null) };
+    return { d: pick('D'), n: pick('N') };
+  }
+  function stCell(k, fn) { return k == null ? '<span class="muted">기록 없음</span>' : cellJe(k, fn(getItem(k).payload)) }
+  function stDef(k, key, label) {
+    return stCell(k, p => {
+      p.defects = p.defects || [];
+      const i = p.defects.findIndex(d => nz(d.name).startsWith(nz(key)));
+      return i >= 0 ? `${inp(`defects.${i}.qty`, p.defects[i].qty, '', '70px', 'number', p.defects[i].qty_alt != null && p.defects[i].qty_alt !== '')}${altChip(`defects.${i}`, p.defects[i])}`
+        : `<input type="number" style="width:70px" placeholder="빈칸" data-je-new="${jn({ list: 'defects', field: 'qty', obj: { name: label, qty: null, raw: null } })}">`;
+    });
+  }
+  function stEtc(k) {
+    return stCell(k, p => {
+      const keys = ST_DEF.map(([key]) => nz(key));
+      const rows = (p.defects || []).map((d, i) => [d, i]).filter(([d]) => !keys.some(x => nz(d.name).startsWith(x)));
+      return rows.map(([d, i]) => `<div class="je-row">${inp(`defects.${i}.name`, d.name, '불량명(예 핀찍힘)', '100px')} ${inp(`defects.${i}.qty`, d.qty, '', '60px', 'number', d.qty_alt != null && d.qty_alt !== '')}${altChip(`defects.${i}`, d)} <button class="ghost small" type="button" data-je-del="defects.${i}">빼기</button></div>`).join('')
+        + `<button class="ghost small" type="button" data-je-add="defects">＋ 기타 불량</button><div class="je-dsum">${dsumHtml(p)}</div>`;
+    });
+  }
+  function stDates(k, kind) {   // kind: LEAD_PIN(materials) | BOBBIN(inputs)
+    return stCell(k, p => {
+      const lead = kind === 'LEAD_PIN', list = lead ? (p.materials = p.materials || []) : (p.inputs = p.inputs || []);
+      const hit = list.map((x, i) => [x, i]).filter(([x]) => lead ? matIs(x.material, 'LEAD_PIN') : (x.component === 'BOBBIN' || (!x.component && x.process === 'IMEB3_INJECTION')));
+      const name = lead ? 'materials' : 'inputs';
+      const cells = hit.map(([x, i], n) => `<span class="jf-n">(${n + 1})</span>${inp(`${name}.${i}.lot_date`, x.lot_date, x.raw || '날짜', '86px')}`);
+      const blank = n => `<span class="jf-n">(${n})</span><input style="width:86px" placeholder="날짜" data-je-new="${jn(lead ? { list: 'materials', field: 'lot_date', obj: { material: 'IMEB3_LEAD_PIN', lot_date: null, raw: null, qty: null, unit: null, spindle: null } } : { list: 'inputs', field: 'lot_date', obj: { process: 'IMEB3_INJECTION', component: 'BOBBIN', lot_date: null, raw: null } })}">`;
+      while (cells.length < 2) cells.push(blank(cells.length + 1));
+      return cells.join(' ');
+    });
+  }
+  function stFormHtml(k) {
+    const { d, n } = stPair(k), p = getItem(k).payload;
+    const row = (label, fd, fn) => `<tr><th>${label}</th><td>${fd(d)}</td><td>${fn ? fn(n) : fd(n)}</td></tr>`;
+    const mdl = kk => stCell(kk, q => sel('model', q.model, [['IV', 'IV'], ['OV', 'OV'], ['HSV', 'HSV']]) + ` <small class="muted">표의 ${kk + 1}번째 줄</small>`);
+    const workers = kk => stCell(kk, q => { q.workers_raw = q.workers_raw || []; return q.workers_raw.map((w, i) => `<div class="je-row">${inp(`workers_raw.${i}.name`, w.name, '이름', '110px')}<button class="ghost small" type="button" data-je-del="workers_raw.${i}">빼기</button></div>`).join('') + '<button class="ghost small" type="button" data-je-add="workers_raw">＋ 작업자</button>' });
+    const num = path => kk => stCell(kk, q => inp(path, q[path], '', '96px', 'number'));
+    return `<div class="jf"><div class="jf-bar"><b>스티칭 작업일보 — 양식 배치</b> <span class="muted">${e(p.work_date || '')}${p.source?.page ? ' · 원본 ' + e(p.source.page) + '쪽' : ''} · 칸 자리가 종이 일보(REV2)와 같습니다</span>
+        <button class="ghost small" type="button" data-je-view="list" style="margin-left:auto">목록으로 보기</button></div>
+      <div class="jf-box"><table class="jf-def jf-st"><tr><th></th><th>주간</th><th>야간</th></tr>
+        ${row('Type 명', mdl)}${row('작업자명', workers)}${row('생산량', num('gross_output_qty'))}${row('작업시간(분)', num('work_minutes'))}
+        <tr><th>불량수량 · 위치도</th><td>${stDef(d, '위치도', '위치도')}</td><td>${stDef(n, '위치도', '위치도')}</td></tr>
+        <tr><th>불량수량 · 전장</th><td>${stDef(d, '전장', '전장')}</td><td>${stDef(n, '전장', '전장')}</td></tr>
+        <tr><th>불량수량 · 기타<br><small class="muted">(핀찍힘 등 손글씨)</small></th><td>${stEtc(d)}</td><td>${stEtc(n)}</td></tr>
+        <tr><th>Lead Pin 입고일자</th><td>${stDates(d, 'LEAD_PIN')}</td><td>${stDates(n, 'LEAD_PIN')}</td></tr>
+        <tr><th>Bobbin 생산일자</th><td>${stDates(d, 'BOBBIN')}</td><td>${stDates(n, 'BOBBIN')}</td></tr>
+        <tr><th>공정검사<br><small class="muted">(10/21 양식부터)</small></th><td colspan="2" class="muted">시간대별 공정검사 칸은 저장 방식을 정하는 중입니다. 지금은 판독 메모(출처)에 원문이 남습니다.</td></tr>
+        <tr><th>특이사항<br><small class="muted">(비가동·문제점·조치)</small></th><td>${stCell(d, q => inp('remarks_raw', q.remarks_raw, '', '100%'))}</td><td>${stCell(n, q => inp('remarks_raw', q.remarks_raw, '', '100%'))}</td></tr>
+      </table><small class="muted">작업시간이 시간(예 5.5)으로 적혀 있으면 분(330)으로 넣으세요. 빈칸에 숫자·날짜를 넣으면 그 줄이 새로 생깁니다.</small></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="primary" type="button" data-je-close="${k}">고친 내용 반영하고 닫기</button><span class="muted">노란 칸 = AI 가 불확실·빈칸으로 남긴 곳 · 저장은 화면 아래 '모두 저장'</span></div></div>`;
+  }
+
   function asmFormHtml(k) {
     const { ba, ca } = asmPair(k), p = getItem(k).payload;
     return `<div class="jf"><div class="jf-bar"><b>조립 작업일보 — 양식 배치</b> <span class="muted">${e(p.work_date || '')} · ${e(p.model || '')}${p.source?.page ? ' · 원본 ' + e(p.source.page) + '쪽' : ''} · 칸 자리가 종이 일보와 같습니다</span>
@@ -236,7 +296,7 @@
   function dsumHtml(p) {
     const c = dsum(p);
     const head = `불량 칸 합 <b>${c.sum.toLocaleString()}</b>`;
-    if (c.tot == null) return `<span class="muted">${head} · 일보에 불량 합계 칸이 있으면 위 '불량 합계(적힌 값)'에 넣어 맞춰 보세요</span>`;
+    if (c.tot == null) return `<span class="muted">${head} <small>(일보에 불량 합계가 적혀 있을 때만 그 값과 맞춰 봅니다)</small></span>`;
     if (c.custom) return `<span class="ok">✔ 적힌 합계 ${c.tot.toLocaleString()} = 초기불량 ${c.init.toLocaleString()} 을 뺀 칸 합(현장 관습) → 저장할 때 초기불량을 넣은 <b>${c.sum.toLocaleString()}</b> 로 반영합니다</span>`;
     return c.bad ? `<span class="je-dbad">⚠ ${head} ≠ 적힌 합계 <b>${c.tot.toLocaleString()}</b> (차이 ${(c.tot - c.sum).toLocaleString()}) — 원본에서 불량 칸 숫자를 다시 확인하세요</span>`
       : `<span class="ok">✔ ${head} = 적힌 합계 ${c.tot.toLocaleString()}</span>`;
@@ -321,8 +381,8 @@
     const nx = tr.nextElementSibling; if (nx && nx.classList.contains('je-tr')) { if (keep) nx.remove(); else { summary(k); closeRow(tr); return } }
     if (!keep) document.querySelectorAll('tr.je-cur').forEach(o => { if (o !== tr) { const j = +o.dataset.i; summary(j); closeRow(o) } });
     const row = document.createElement('tr'); row.className = 'je-tr'; row.dataset.owner = k;
-    const pk = getItem(k).payload, hasForm = ASM.includes(pk.process) || pk.process === 'IMEB3_INJECTION', useForm = hasForm && window.__jeAsmForm !== false;
-    const formHtml = () => pk.process === 'IMEB3_INJECTION' ? injFormHtml(k) : asmFormHtml(k);
+    const pk = getItem(k).payload, hasForm = ASM.includes(pk.process) || pk.process === 'IMEB3_INJECTION' || pk.process === 'IMEB3_STITCHING', useForm = hasForm && window.__jeAsmForm !== false;
+    const formHtml = () => pk.process === 'IMEB3_INJECTION' ? injFormHtml(k) : pk.process === 'IMEB3_STITCHING' ? stFormHtml(k) : asmFormHtml(k);
     row.innerHTML = `<td colspan="${tr.children.length}" style="background:var(--edit-bg);text-align:left">${headHtml(k, pk)}${useForm ? formHtml() : (hasForm ? '<div style="margin:0 0 6px"><button class="ghost small" type="button" data-je-view="form">📋 일보 양식 배치로 보기</button></div>' : '') + editorHtml(k, pk)}</td>`;
     tr.after(row); tr.classList.add('je-cur'); nameDecorate(row);
     if (!keep) tr.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -409,6 +469,6 @@
   css.textContent = `.je{font-size:12px}.je-grid{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:6px}.je label{display:inline-flex;gap:4px;align-items:center;font-weight:400}.je-wide{display:flex!important;margin:4px 0}.je-wide input{flex:1}
   .je-list{margin:8px 0;padding:6px 8px;border:1px dashed #cfd6dd;border-radius:8px}.je-list>b{display:block;margin-bottom:4px}.je-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:3px 0}.je input,.je select{padding:3px 5px;font-size:12px;width:auto}
   tr.je-cur>td{background:var(--cur-bg,#e3f0ff)!important;border-top:2px solid #1e6fd9;border-bottom:2px solid #1e6fd9}tr.je-cur>td:first-child{border-left:5px solid #1e6fd9}
-  tr.je-tr>td{border-left:5px solid #1e6fd9;border-bottom:2px solid #1e6fd9}:root{--cur-bg:#e3f0ff}[data-theme=dark]{--cur-bg:#16263d}.je-alt{font-size:11px;padding:1px 6px;border-radius:8px;background:var(--flag-bg)}.je-dsum{margin:-2px 0 6px;font-size:12px}.je-dbad{color:#c62828;font-weight:600}.jf-prod td,.jf-prod th{padding:3px 8px 3px 0;vertical-align:top}.jf-prod td:last-child{width:40%}.jf-two td{padding:3px 10px 3px 0;vertical-align:top}.jf-warn{background:var(--flag-bg);border-radius:6px;padding:2px}.jf-bar{display:flex;gap:8px;align-items:center;margin-bottom:6px}.jf-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(260px,2fr);gap:10px}.jf-box{border:1px solid var(--border,#cfd6dd);border-radius:8px;padding:8px;margin-bottom:8px;background:var(--surface,#fff)}.jf-none{opacity:.7}.jf-t{font-weight:700;margin-bottom:4px}.jf-row{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:6px}.jf-s{display:block;margin:6px 0 2px;font-size:12px}.jf-def{border-collapse:collapse;margin:2px 0 4px;width:auto!important}.jf-def tr{border:0}.jf-def th{text-align:left;font-weight:400;padding:2px 10px 2px 0;white-space:nowrap}.jf-def td{padding:2px 0}.jf-wire{border-collapse:collapse}.jf-wire td{border:1px solid var(--border,#e3e8ec);padding:2px;text-align:center;vertical-align:top}.jf-wire td small{display:block;color:#6b7280;font-size:10px}@media (max-width:900px){.jf-grid{grid-template-columns:1fr}}.je-nmw{display:inline-flex;align-items:center}.je-nm{font-size:11px;margin-left:4px;padding:1px 6px;border-radius:8px}.je-nm.ok{color:#2e7d32}.je-nm.fx{background:var(--flag-bg);color:inherit}.je-nm.nw{color:#b26a00}.je-head{position:sticky;top:0;z-index:5;margin:-2px 0 8px;padding:6px 10px;background:#1e6fd9;color:#fff;border-radius:6px;font-size:13px}`;
+  tr.je-tr>td{border-left:5px solid #1e6fd9;border-bottom:2px solid #1e6fd9}:root{--cur-bg:#e3f0ff}[data-theme=dark]{--cur-bg:#16263d}.je-alt{font-size:11px;padding:1px 6px;border-radius:8px;background:var(--flag-bg)}.je-dsum{margin:-2px 0 6px;font-size:12px}.je-dbad{color:#c62828;font-weight:600}.jf-prod td,.jf-prod th{padding:3px 8px 3px 0;vertical-align:top}.jf-prod td:last-child{width:40%}.jf-two td{padding:3px 10px 3px 0;vertical-align:top}.jf-warn{background:var(--flag-bg);border-radius:6px;padding:2px}.jf-st th{text-align:left;font-weight:600;padding:4px 12px 4px 0;vertical-align:top;white-space:nowrap}.jf-st td{padding:4px 16px 4px 0;vertical-align:top;min-width:240px}.jf-sub{color:#6b7280;font-size:12px;padding-bottom:0!important}.jf-n{font-size:11px;color:#6b7280;margin:0 2px}.jf-bar{display:flex;gap:8px;align-items:center;margin-bottom:6px}.jf-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(260px,2fr);gap:10px}.jf-box{border:1px solid var(--border,#cfd6dd);border-radius:8px;padding:8px;margin-bottom:8px;background:var(--surface,#fff)}.jf-none{opacity:.7}.jf-t{font-weight:700;margin-bottom:4px}.jf-row{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:6px}.jf-s{display:block;margin:6px 0 2px;font-size:12px}.jf-def{border-collapse:collapse;margin:2px 0 4px;width:auto!important}.jf-def tr{border:0}.jf-def th{text-align:left;font-weight:400;padding:2px 10px 2px 0;white-space:nowrap}.jf-def td{padding:2px 0}.jf-wire{border-collapse:collapse}.jf-wire td{border:1px solid var(--border,#e3e8ec);padding:2px;text-align:center;vertical-align:top}.jf-wire td small{display:block;color:#6b7280;font-size:10px}@media (max-width:900px){.jf-grid{grid-template-columns:1fr}}.je-nmw{display:inline-flex;align-items:center}.je-nm{font-size:11px;margin-left:4px;padding:1px 6px;border-radius:8px}.je-nm.ok{color:#2e7d32}.je-nm.fx{background:var(--flag-bg);color:inherit}.je-nm.nw{color:#b26a00}.je-head{position:sticky;top:0;z-index:5;margin:-2px 0 8px;padding:6px 10px;background:#1e6fd9;color:#fff;border-radius:6px;font-size:13px}`;
   document.head.appendChild(css);
 })();
