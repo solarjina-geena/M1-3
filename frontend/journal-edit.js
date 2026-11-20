@@ -257,6 +257,59 @@
       <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="primary" type="button" data-je-close="${k}">고친 내용 반영하고 닫기</button><span class="muted">노란 칸 = AI 가 불확실·빈칸으로 남긴 곳 · 저장은 화면 아래 '모두 저장'</span></div></div>`;
   }
 
+  // ── (2026-11-20) 최종검사일보 고치기를 '일보 양식 배치'로 ──
+  // 종이: 검사 Item 4칸(열마다 모델) · 검사 수량 · Lot No · 검사 시간 / 불량유형 21줄(인쇄 순서) · 총 불량 수 · 비고 / 검사자.
+  // 양식에는 없지만 화면 맨 위에 열마다 '차수'(1차검사 · 본검사(2차) · 재검사)를 둔다(사용자 요청 2026-11-20). 같은 파일·쪽·검사일의 열을 한 화면에.
+  const FIN_DEF = [['미성형', '미성형'], ['wire이탈', 'Wire 이탈'], ['미압입', '미압입'], ['wiredamage', 'Wire Damage'], ['여선', '여선불량'], ['bobbin파손', 'Bobbin 파손'],
+    ['leadpin휨', 'Lead Pin 휨'], ['leadpin단차', 'Lead Pin 단차'], ['u/c찍힘', 'U/C 찍힘'], ['u/c도금', 'U/C 도금'], ['l/c찍힘', 'L/C 찍힘'], ['l/c도금', 'L/C 도금'],
+    ['용접찍힘', '용접찍힘버'], ['case역삽입', 'Case 역삽입'], ['marking', 'Marking 불량'], ['와이어늘어짐', '와이어늘어짐'], ['내경파손', '내경파손'], ['post파손', 'Post 파손'],
+    ['pin찍힘', 'Pin 찍힘'], ['pin도금', 'Pin 도금'], ['용접불량', '용접불량']];
+  function finCols(k) {
+    const a = getItem(k).payload, f = a.source?.file || a.source?.filename || '', pg = String(a.source?.page ?? '');
+    return (window.pendingItems || []).map((it, j) => [it, j]).filter(([it]) => it && it.ok && !it._skip && it.payload?.process === 'IMEB3_FINAL_INSPECTION'
+      && it.payload.work_date === a.work_date && String(it.payload.source?.file || it.payload.source?.filename || '') === f && String(it.payload.source?.page ?? '') === pg).map(([, j]) => j);
+  }
+  function finUsed(p) {   // 인쇄된 줄마다 그 열의 불량 위치(한 번씩만)
+    const used = new Map(), taken = new Set();
+    FIN_DEF.forEach(([key]) => { const i = (p.defects || []).findIndex((d, j) => !taken.has(j) && nz(d.name).startsWith(nz(key))); if (i >= 0) { used.set(key, i); taken.add(i) } });
+    return { used, taken };
+  }
+  function finFormHtml(k) {
+    const cols = finCols(k), p0 = getItem(k).payload;
+    const info = cols.map(j => { const p = getItem(j).payload; p.defects = p.defects || []; p.lots = p.lots || []; return { j, p, ...finUsed(p) } });
+    const td = (c, html) => `<td>${cellJe(c.j, html)}</td>`;
+    const rowOf = (label, fn, cls = '') => `<tr class="${cls}"><th>${label}</th>${info.map(c => td(c, fn(c))).join('')}</tr>`;
+    const CLS = [['FIRST', '1차검사 (훈련·신입·지원, 합계 제외)'], ['MAIN', '본검사 (2차, 합계)'], ['RE', '재검사 (불량 이슈 재선별, 따로 집계)']];
+    const clsSel = c => `<select data-cls="1" class="jf-cls jf-cls-${clsOf(c.p)}">${CLS.map(([v, t]) => `<option value="${v}" ${clsOf(c.p) === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`
+      + (clsOf(c.p) === 'RE' ? `<div style="margin-top:3px">${inp('inspection_content', c.p.inspection_content, '검사 내용(현미경 검사·와이어 데미지 등)', '100%')}</div>` : '');
+    const lotsCell = c => c.p.lots.map((l, i) => `<div class="je-row">${inp(`lots.${i}.raw`, l.raw, 'ZH3=12BOX', '96px')} 마킹 ${inp(`lots.${i}.marking_code`, l.marking_code, 'ZH3', '46px')} BOX ${inp(`lots.${i}.boxes`, l.boxes, '', '46px', 'number')}<button class="ghost small" type="button" data-je-del="lots.${i}">빼기</button></div>`).join('')
+      + (c.p.lots.length ? '' : '<div class="warn" style="font-size:11px">LOT 기록 없음 → 저장하면 확인 필요로</div>') + '<button class="ghost small" type="button" data-je-add="lots">＋ LOT</button>';
+    const defCell = (c, key, label) => {
+      const i = c.used.get(key);
+      return i != null ? `${inp(`defects.${i}.qty`, c.p.defects[i].qty, '', '62px', 'number', c.p.defects[i].qty_alt != null && c.p.defects[i].qty_alt !== '')}${altChip(`defects.${i}`, c.p.defects[i])}`
+        : `<input type="number" style="width:62px" placeholder="" data-je-new="${jn({ list: 'defects', field: 'qty', obj: { name: label, qty: null, raw: null } })}">`;
+    };
+    const extraCell = c => c.p.defects.map((d, i) => [d, i]).filter(([, i]) => !c.taken.has(i)).map(([d, i]) => `<div class="je-row">${inp(`defects.${i}.name`, d.name, '불량명', '96px')} ${inp(`defects.${i}.qty`, d.qty, '', '52px', 'number', d.qty_alt != null && d.qty_alt !== '')}${altChip(`defects.${i}`, d)}<button class="ghost small" type="button" data-je-del="defects.${i}">빼기</button></div>`).join('')
+      + '<button class="ghost small" type="button" data-je-add="defects">＋ 손글씨 불량</button>';
+    return `<div class="jf"><div class="jf-bar"><b>최종검사일보 — 양식 배치</b> <span class="muted">${e(p0.work_date || '')}${p0.source?.page ? ' · 원본 ' + e(p0.source.page) + '쪽' : ''} · 검사 Item ${cols.length}칸 · 칸 자리가 종이 일보와 같습니다</span>
+        <button class="ghost small" type="button" data-je-view="list" style="margin-left:auto">목록으로 보기</button></div>
+      <div class="jf-box" style="overflow-x:auto"><table class="jf-def jf-fin">
+        ${rowOf('차수 <small class="muted">(화면 전용)</small>', clsSel, 'jf-clsrow')}
+        <tr><th>표의 줄</th>${info.map(c => `<td class="muted">표의 ${c.j + 1}번째 줄</td>`).join('')}</tr>
+        ${rowOf('검사 Item', c => sel('model', c.p.model, [['IV', 'IV'], ['OV', 'OV'], ['HSV', 'HSV']]))}
+        ${rowOf('검사 수량(EA)', c => inp('gross_output_qty', c.p.gross_output_qty, '', '90px', 'number'))}
+        ${rowOf('Lot No', lotsCell)}
+        ${rowOf('검사 시간(분)', c => inp('work_minutes', c.p.work_minutes, '', '70px', 'number'))}
+        ${rowOf('검사자 <small class="muted">(가려서 저장)</small>', c => inp('inspector_raw', c.p.inspector_raw, '', '96px'))}
+        <tr class="jf-head2"><th>불량유형</th><td colspan="${info.length}">불량수량</td></tr>
+        ${FIN_DEF.map(([key, label]) => rowOf(label, c => defCell(c, key, label))).join('')}
+        ${rowOf('손글씨 추가', extraCell)}
+        ${rowOf('총 불량 수 <small class="muted">(적힌 값)</small>', c => `${inp('defect_qty', c.p.defect_qty, '', '62px', 'number')}<div class="je-dsum">${dsumHtml(c.p)}</div>`)}
+        ${rowOf('비고', c => inp('remarks_raw', c.p.remarks_raw, '', '100%'))}
+      </table><small class="muted">검사 시간이 시간(예 10시간)으로 적혀 있으면 분(600)으로 넣으세요. 빈칸에 숫자를 넣으면 그 불량 줄이 새로 생깁니다. 차수는 양식에 없는 칸이라 원본과 검사자를 보고 고르세요.</small></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="primary" type="button" data-je-close="${k}">고친 내용 반영하고 닫기</button><span class="muted">노란 칸 = AI 가 불확실·빈칸으로 남긴 곳 · 저장은 화면 아래 '모두 저장'</span></div></div>`;
+  }
+
   function asmFormHtml(k) {
     const { ba, ca } = asmPair(k), p = getItem(k).payload;
     return `<div class="jf"><div class="jf-bar"><b>조립 작업일보 — 양식 배치</b> <span class="muted">${e(p.work_date || '')} · ${e(p.model || '')}${p.source?.page ? ' · 원본 ' + e(p.source.page) + '쪽' : ''} · 칸 자리가 종이 일보와 같습니다</span>
@@ -381,8 +434,8 @@
     const nx = tr.nextElementSibling; if (nx && nx.classList.contains('je-tr')) { if (keep) nx.remove(); else { summary(k); closeRow(tr); return } }
     if (!keep) document.querySelectorAll('tr.je-cur').forEach(o => { if (o !== tr) { const j = +o.dataset.i; summary(j); closeRow(o) } });
     const row = document.createElement('tr'); row.className = 'je-tr'; row.dataset.owner = k;
-    const pk = getItem(k).payload, hasForm = ASM.includes(pk.process) || pk.process === 'IMEB3_INJECTION' || pk.process === 'IMEB3_STITCHING', useForm = hasForm && window.__jeAsmForm !== false;
-    const formHtml = () => pk.process === 'IMEB3_INJECTION' ? injFormHtml(k) : pk.process === 'IMEB3_STITCHING' ? stFormHtml(k) : asmFormHtml(k);
+    const pk = getItem(k).payload, hasForm = ASM.includes(pk.process) || ['IMEB3_INJECTION', 'IMEB3_STITCHING', 'IMEB3_FINAL_INSPECTION'].includes(pk.process), useForm = hasForm && window.__jeAsmForm !== false;
+    const formHtml = () => pk.process === 'IMEB3_INJECTION' ? injFormHtml(k) : pk.process === 'IMEB3_STITCHING' ? stFormHtml(k) : pk.process === 'IMEB3_FINAL_INSPECTION' ? finFormHtml(k) : asmFormHtml(k);
     row.innerHTML = `<td colspan="${tr.children.length}" style="background:var(--edit-bg);text-align:left">${headHtml(k, pk)}${useForm ? formHtml() : (hasForm ? '<div style="margin:0 0 6px"><button class="ghost small" type="button" data-je-view="form">📋 일보 양식 배치로 보기</button></div>' : '') + editorHtml(k, pk)}</td>`;
     tr.after(row); tr.classList.add('je-cur'); nameDecorate(row);
     if (!keep) tr.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -469,6 +522,6 @@
   css.textContent = `.je{font-size:12px}.je-grid{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:6px}.je label{display:inline-flex;gap:4px;align-items:center;font-weight:400}.je-wide{display:flex!important;margin:4px 0}.je-wide input{flex:1}
   .je-list{margin:8px 0;padding:6px 8px;border:1px dashed #cfd6dd;border-radius:8px}.je-list>b{display:block;margin-bottom:4px}.je-row{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:3px 0}.je input,.je select{padding:3px 5px;font-size:12px;width:auto}
   tr.je-cur>td{background:var(--cur-bg,#e3f0ff)!important;border-top:2px solid #1e6fd9;border-bottom:2px solid #1e6fd9}tr.je-cur>td:first-child{border-left:5px solid #1e6fd9}
-  tr.je-tr>td{border-left:5px solid #1e6fd9;border-bottom:2px solid #1e6fd9}:root{--cur-bg:#e3f0ff}[data-theme=dark]{--cur-bg:#16263d}.je-alt{font-size:11px;padding:1px 6px;border-radius:8px;background:var(--flag-bg)}.je-dsum{margin:-2px 0 6px;font-size:12px}.je-dbad{color:#c62828;font-weight:600}.jf-prod td,.jf-prod th{padding:3px 8px 3px 0;vertical-align:top}.jf-prod td:last-child{width:40%}.jf-two td{padding:3px 10px 3px 0;vertical-align:top}.jf-warn{background:var(--flag-bg);border-radius:6px;padding:2px}.jf-st th{text-align:left;font-weight:600;padding:4px 12px 4px 0;vertical-align:top;white-space:nowrap}.jf-st td{padding:4px 16px 4px 0;vertical-align:top;min-width:240px}.jf-sub{color:#6b7280;font-size:12px;padding-bottom:0!important}.jf-n{font-size:11px;color:#6b7280;margin:0 2px}.jf-bar{display:flex;gap:8px;align-items:center;margin-bottom:6px}.jf-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(260px,2fr);gap:10px}.jf-box{border:1px solid var(--border,#cfd6dd);border-radius:8px;padding:8px;margin-bottom:8px;background:var(--surface,#fff)}.jf-none{opacity:.7}.jf-t{font-weight:700;margin-bottom:4px}.jf-row{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:6px}.jf-s{display:block;margin:6px 0 2px;font-size:12px}.jf-def{border-collapse:collapse;margin:2px 0 4px;width:auto!important}.jf-def tr{border:0}.jf-def th{text-align:left;font-weight:400;padding:2px 10px 2px 0;white-space:nowrap}.jf-def td{padding:2px 0}.jf-wire{border-collapse:collapse}.jf-wire td{border:1px solid var(--border,#e3e8ec);padding:2px;text-align:center;vertical-align:top}.jf-wire td small{display:block;color:#6b7280;font-size:10px}@media (max-width:900px){.jf-grid{grid-template-columns:1fr}}.je-nmw{display:inline-flex;align-items:center}.je-nm{font-size:11px;margin-left:4px;padding:1px 6px;border-radius:8px}.je-nm.ok{color:#2e7d32}.je-nm.fx{background:var(--flag-bg);color:inherit}.je-nm.nw{color:#b26a00}.je-head{position:sticky;top:0;z-index:5;margin:-2px 0 8px;padding:6px 10px;background:#1e6fd9;color:#fff;border-radius:6px;font-size:13px}`;
+  tr.je-tr>td{border-left:5px solid #1e6fd9;border-bottom:2px solid #1e6fd9}:root{--cur-bg:#e3f0ff}[data-theme=dark]{--cur-bg:#16263d}.je-alt{font-size:11px;padding:1px 6px;border-radius:8px;background:var(--flag-bg)}.je-dsum{margin:-2px 0 6px;font-size:12px}.je-dbad{color:#c62828;font-weight:600}.jf-prod td,.jf-prod th{padding:3px 8px 3px 0;vertical-align:top}.jf-prod td:last-child{width:40%}.jf-two td{padding:3px 10px 3px 0;vertical-align:top}.jf-warn{background:var(--flag-bg);border-radius:6px;padding:2px}.jf-st th{text-align:left;font-weight:600;padding:4px 12px 4px 0;vertical-align:top;white-space:nowrap}.jf-st td{padding:4px 16px 4px 0;vertical-align:top;min-width:240px}.jf-sub{color:#6b7280;font-size:12px;padding-bottom:0!important}.jf-n{font-size:11px;color:#6b7280;margin:0 2px}.jf-fin th{text-align:left;font-weight:500;padding:3px 10px 3px 0;white-space:nowrap}.jf-fin td{padding:3px 12px 3px 0;vertical-align:top;min-width:170px}.jf-fin tr:nth-child(even) td,.jf-fin tr:nth-child(even) th{background:rgba(0,0,0,.025)}.jf-head2 th,.jf-head2 td{font-weight:700;border-top:2px solid var(--border,#cfd6dd);padding-top:6px!important}.jf-cls{font-weight:700}.jf-cls-MAIN{border-color:#2e7d32}.jf-cls-FIRST{border-color:#9ca3af}.jf-cls-RE{border-color:#c62828}.jf-clsrow th{color:#1e6fd9}.jf-bar{display:flex;gap:8px;align-items:center;margin-bottom:6px}.jf-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(260px,2fr);gap:10px}.jf-box{border:1px solid var(--border,#cfd6dd);border-radius:8px;padding:8px;margin-bottom:8px;background:var(--surface,#fff)}.jf-none{opacity:.7}.jf-t{font-weight:700;margin-bottom:4px}.jf-row{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:6px}.jf-s{display:block;margin:6px 0 2px;font-size:12px}.jf-def{border-collapse:collapse;margin:2px 0 4px;width:auto!important}.jf-def tr{border:0}.jf-def th{text-align:left;font-weight:400;padding:2px 10px 2px 0;white-space:nowrap}.jf-def td{padding:2px 0}.jf-wire{border-collapse:collapse}.jf-wire td{border:1px solid var(--border,#e3e8ec);padding:2px;text-align:center;vertical-align:top}.jf-wire td small{display:block;color:#6b7280;font-size:10px}@media (max-width:900px){.jf-grid{grid-template-columns:1fr}}.je-nmw{display:inline-flex;align-items:center}.je-nm{font-size:11px;margin-left:4px;padding:1px 6px;border-radius:8px}.je-nm.ok{color:#2e7d32}.je-nm.fx{background:var(--flag-bg);color:inherit}.je-nm.nw{color:#b26a00}.je-head{position:sticky;top:0;z-index:5;margin:-2px 0 8px;padding:6px 10px;background:#1e6fd9;color:#fff;border-radius:6px;font-size:13px}`;
   document.head.appendChild(css);
 })();
