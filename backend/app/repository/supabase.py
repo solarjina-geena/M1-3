@@ -102,6 +102,9 @@ class SupabaseRepository(Repository):
             d["originals"].add(r.get("defect_name"))
             b = d["by"].setdefault(r["model_code"], {}).setdefault(r["inspection_class"], {"qty": 0, "qty_ppm": 0})
             b["qty"] += r["quantity"]
+            # (2026-11-20) 불량 1~3위 카드: 모델·검사 구분별로 어느 날 많이 나왔는지
+            dd = b.setdefault("days", {})
+            dd[r["inspection_date"]] = dd.get(r["inspection_date"], 0) + r["quantity"]
             if (r.get("inspected_qty_ea") or 0) > 0:
                 b["qty_ppm"] += r["quantity"]
             else:
@@ -112,6 +115,9 @@ class SupabaseRepository(Repository):
                 for c, b in by.items():
                     den = insp.get(m, {}).get(c, {}).get("qty") or 0
                     b["ppm"] = round(b["qty_ppm"] * 1e6 / den) if den else None
+                    days = b.pop("days", {})
+                    b["top_days"] = [{"date": k, "qty": v} for k, v in sorted(days.items(), key=lambda kv: (-kv[1], kv[0]))[:3]]
+                    b["n_days"] = len(days)
         return {"inspected": insp, "not_imeb3_qty": not_imeb3,
                 "defects": sorted(defs.values(), key=lambda d: (d["group_order"], -sum(b.get("2차", {}).get("qty", 0) for b in d["by"].values()))),
                 "null_qty_findings": null_q, "qty_without_inspected": excluded, "from": date_from, "to": date_to, "model": model}
