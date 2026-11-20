@@ -231,6 +231,17 @@ class JournalPayload(BaseModel):
                 l["boxes"] = int(mb.group(1)) if mb else None
         for x in d["defects"]:
             x.pop("qty_alt", None)   # 판독 후보는 화면용, 저장하지 않음
+        # (2026-11-20 사용자 결정) 초기불량은 셋업불량처럼 고정적으로 나와 현장에서는 불량 합계에서 빼고 적는 것이 관습이지만,
+        # 원칙적으로 불량 수량이므로 합계에 넣는다. 적힌 합계가 '칸 합 − 초기불량'과 정확히 같을 때만 자동으로 초기불량 포함 합계로 바꾸고,
+        # 적힌 값은 출처(source.written_defect_total)에 남긴다. 그래도 안 맞으면 그대로 둔다(확인 필요 '자료 점검' 카드로).
+        if d.get("defect_qty") is not None:
+            qs = [(str(x.get("name") or ""), x["qty"]) for x in d["defects"] if isinstance(x.get("qty"), int)]
+            s_all = sum(q for _, q in qs)
+            s_init = sum(q for n, q in qs if re.search(r"초기\s*불량", n))
+            if s_init and d["defect_qty"] != s_all and d["defect_qty"] == s_all - s_init:
+                d["source"]["written_defect_total"] = d["defect_qty"]
+                d["source"]["defect_total_rule"] = "초기불량 포함(현장 관습상 일보 합계에서 빠짐)"
+                d["defect_qty"] = s_all
         if self.process == "IMEB3_FINAL_INSPECTION":
             d["inspected_qty"] = self.gross_output_qty
         # ---- 사람 이름: 검사자·작업자 모두 가린 표시명만 남기고 원문은 버린다. 자유 문장에 같은 이름이 있으면 그 자리도 가린다.

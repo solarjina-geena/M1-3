@@ -84,12 +84,16 @@
   function dsum(p) {
     const ds = (p.defects || []).map(d => numOr(d.qty)).filter(x => x != null), sum = ds.reduce((a, x) => a + x, 0), tot = numOr(p.defect_qty);
     const alts = (p.defects || []).filter(d => d.qty_alt != null && d.qty_alt !== '').length;
-    return { sum, tot, alts, bad: tot != null && tot !== sum };
+    // (2026-11-20) 초기불량을 빼고 적은 합계(현장 관습)도 맞는 것으로 보고, 저장 때 초기불량 포함 합계로 자동 반영
+    const init = (p.defects || []).filter(d => /초기\s*불량/.test(d.name || '')).map(d => numOr(d.qty)).filter(x => x != null).reduce((a, x) => a + x, 0);
+    const custom = tot != null && init > 0 && tot !== sum && tot === sum - init;
+    return { sum, tot, alts, init, custom, bad: tot != null && tot !== sum && !custom };
   }
   function dsumHtml(p) {
     const c = dsum(p);
     const head = `불량 칸 합 <b>${c.sum.toLocaleString()}</b>`;
     if (c.tot == null) return `<span class="muted">${head} · 일보에 불량 합계 칸이 있으면 위 '불량 합계(적힌 값)'에 넣어 맞춰 보세요</span>`;
+    if (c.custom) return `<span class="ok">✔ 적힌 합계 ${c.tot.toLocaleString()} = 초기불량 ${c.init.toLocaleString()} 을 뺀 칸 합(현장 관습) → 저장할 때 초기불량을 넣은 <b>${c.sum.toLocaleString()}</b> 로 반영합니다</span>`;
     return c.bad ? `<span class="je-dbad">⚠ ${head} ≠ 적힌 합계 <b>${c.tot.toLocaleString()}</b> (차이 ${(c.tot - c.sum).toLocaleString()}) — 원본에서 불량 칸 숫자를 다시 확인하세요</span>`
       : `<span class="ok">✔ ${head} = 적힌 합계 ${c.tot.toLocaleString()}</span>`;
   }
